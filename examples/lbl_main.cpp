@@ -15,26 +15,24 @@
 void transpose_unsym(const nasoq::CSC *A, nasoq::CSC *&B) {
   if (!A) return;  // no-op if A is null
 
-  // Dimensions of A
-  int m = A->nrow;  // #rows in A
-  int n = A->ncol;  // #cols in A
+  int m = A->nrow;
+  int n = A->ncol;
 
   // Allocate B as A^T
   B = new nasoq::CSC;
   B->nrow = n;
   B->ncol = m;
   B->stype = 0;        // unsymmetric
-  B->xtype = A->xtype; // typically CHOLMOD_REAL
+  B->xtype = A->xtype;
   B->sorted = 1;       // we will produce sorted columns
-  B->packed = 1;       // standard CSC is "packed"
-  B->nz = A->nz;       // might set it later if needed
-  B->nzmax = A->nzmax; // same storage capacity
+  B->packed = 1;
+  B->nz = A->nz;
+  B->nzmax = A->nzmax;
 
-  // Allocate column pointer (B->p has length B->ncol+1)
+  // Allocate column pointer
   B->p = new int[B->ncol + 1];
   std::memset(B->p, 0, (B->ncol + 1) * sizeof(int));
 
-  // We will need arrays B->i (and B->x if A->x != nullptr)
   B->i = new int[B->nzmax];
   if (A->x) {
     B->x = new double[B->nzmax];
@@ -46,13 +44,10 @@ void transpose_unsym(const nasoq::CSC *A, nasoq::CSC *&B) {
   // 1. Count how many entries go into each column of B.
   //    (which is each row of A)
   // ----------------------------------------------------------------------
-  // For B, each of A's row indices become column indices.
-  // So we count row-occurrences in A to build col-sizes in B.
   for (int colA = 0; colA < n; colA++) {
-    // A->p[colA] .. A->p[colA+1]-1 are the non-zeros in colA
     for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
       int rowA = A->i[pA];
-      B->p[rowA + 1]++;  // rowA in A becomes col(rowA) in B
+      B->p[rowA + 1]++;
     }
   }
 
@@ -67,24 +62,21 @@ void transpose_unsym(const nasoq::CSC *A, nasoq::CSC *&B) {
 
   // ----------------------------------------------------------------------
   // 3. Fill B->i and B->x
-  //    We'll use an auxiliary "next position" array that
+  //    Use an auxiliary "next position" array that
   //    starts at B->p[colB] and moves forward.
   // ----------------------------------------------------------------------
-  // We can reuse B->p[..] to track the next free slot for each col
-  // but let's store the prefix-sums in an auxiliary array for clarity:
   std::vector<int> nextPos(B->ncol);
   for (int colB = 0; colB < B->ncol; colB++) {
     nextPos[colB] = B->p[colB];
   }
 
-  // Go through columns in A again
   for (int colA = 0; colA < n; colA++) {
     for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
       int rowA = A->i[pA];
-      int destPos = nextPos[rowA]++; // the slot in column=rowA of B
-      B->i[destPos] = colA;         // row of B is colA (since B = A^T)
+      int destPos = nextPos[rowA]++;
+      B->i[destPos] = colA;
       if (B->x) {
-        B->x[destPos] = A->x[pA];   // copy numerical value
+        B->x[destPos] = A->x[pA];
       }
     }
   }
@@ -228,15 +220,11 @@ int main(int argc, char *argv[]){
 
 std::cout << "GMRES / iterative refinement steps: " << lbl->num_ref_iter << "\n";
 
-// 2) Print raw timing info (analysis/factor/solve/etc.)
+// 2) Print raw timing info
 if(lbl->psi){
-  lbl->psi->print_profiling(); 
-  // This prints lines like:
-//   analysis time: xx; fact time: yy; update time: zz; reordering pivot time: ww; solve time: vv;
+  lbl->psi->print_profiling();
 }
 
-// 3) If you want the solver's built-in backward error for A*x=b:
-//    (only meaningful if s.build_super_matrix() or s.A was an actual system matrix)
 lbl->compute_norms();            // compute norms of A, x, b, Ax-b
 double be = lbl->backward_error();
 std::cout << "Backward error = " << be << std::endl;
