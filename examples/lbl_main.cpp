@@ -6,6 +6,178 @@
 #include <cstdio>
 #include <iostream>
 #include <cmath>
+#include <cstring>
+#include <vector>
+
+#include "yaml_qp_parser.h"
+
+
+void transpose_unsym(const nasoq::CSC *A, nasoq::CSC *&B) {
+  if (!A) return;  // no-op if A is null
+
+  // Dimensions of A
+  int m = A->nrow;  // #rows in A
+  int n = A->ncol;  // #cols in A
+
+  // Allocate B as A^T
+  B = new nasoq::CSC;
+  B->nrow = n;
+  B->ncol = m;
+  B->stype = 0;        // unsymmetric
+  B->xtype = A->xtype; // typically CHOLMOD_REAL
+  B->sorted = 1;       // we will produce sorted columns
+  B->packed = 1;       // standard CSC is "packed"
+  B->nz = A->nz;       // might set it later if needed
+  B->nzmax = A->nzmax; // same storage capacity
+
+  // Allocate column pointer (B->p has length B->ncol+1)
+  B->p = new int[B->ncol + 1];
+  std::memset(B->p, 0, (B->ncol + 1) * sizeof(int));
+
+  // We will need arrays B->i (and B->x if A->x != nullptr)
+  B->i = new int[B->nzmax];
+  if (A->x) {
+    B->x = new double[B->nzmax];
+  } else {
+    B->x = nullptr;
+  }
+
+  // ----------------------------------------------------------------------
+  // 1. Count how many entries go into each column of B.
+  //    (which is each row of A)
+  // ----------------------------------------------------------------------
+  // For B, each of A's row indices become column indices.
+  // So we count row-occurrences in A to build col-sizes in B.
+  for (int colA = 0; colA < n; colA++) {
+    // A->p[colA] .. A->p[colA+1]-1 are the non-zeros in colA
+    for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
+      int rowA = A->i[pA];
+      B->p[rowA + 1]++;  // rowA in A becomes col(rowA) in B
+    }
+  }
+
+  // ----------------------------------------------------------------------
+  // 2. Prefix sum of B->p to get the correct column pointers
+  //    B->p[i] will be the start of column i in B->i,B->x
+  // ----------------------------------------------------------------------
+  for (int colB = 0; colB < B->ncol; colB++) {
+    B->p[colB + 1] += B->p[colB];
+  }
+  // Now B->p[k] = cumulative # of nonzeros up to column k.
+
+  // ----------------------------------------------------------------------
+  // 3. Fill B->i and B->x
+  //    We'll use an auxiliary "next position" array that
+  //    starts at B->p[colB] and moves forward.
+  // ----------------------------------------------------------------------
+  // We can reuse B->p[..] to track the next free slot for each col
+  // but let's store the prefix-sums in an auxiliary array for clarity:
+  std::vector<int> nextPos(B->ncol);
+  for (int colB = 0; colB < B->ncol; colB++) {
+    nextPos[colB] = B->p[colB];
+  }
+
+  // Go through columns in A again
+  for (int colA = 0; colA < n; colA++) {
+    for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
+      int rowA = A->i[pA];
+      int destPos = nextPos[rowA]++; // the slot in column=rowA of B
+      B->i[destPos] = colA;         // row of B is colA (since B = A^T)
+      if (B->x) {
+        B->x[destPos] = A->x[pA];   // copy numerical value
+      }
+    }
+  }
+}
+
+
+static void print_qp_debug(const QPProblem &qp){
+  // Hessian H
+  if(qp.H){
+    std::cout<<"H: "<<qp.H->nrow<<" x "<<qp.H->ncol
+             <<" nnz="<<qp.H->nzmax<<"\n";
+    int show_cols = std::min((int)qp.H->ncol, 5);
+    for(int col=0; col< show_cols; col++){
+      int start= qp.H->p[col];
+      int end  = qp.H->p[col+1];
+      for(int idx=start; idx<end; idx++){
+        int row= qp.H->i[idx];
+        if(row<5){
+          double val= qp.H->x[idx];
+          std::cout<<"  H("<<row<<","<<col<<")="<<val<<"\n";
+        }
+      }
+    }
+  }
+
+  // linear q
+  if(qp.q){
+    std::cout<<"q: [";
+    int show_q= std::min(qp.n,5);
+    for(int i=0;i< show_q;i++){
+      std::cout<< qp.q[i]<<" ";
+    }
+    std::cout<<( (qp.n>5) ? "...]\n" : "]\n");
+  }
+
+  // equality constraints A, b
+  if(qp.A){
+    std::cout<<"A: "<<qp.A->nrow<<" x "<<qp.A->ncol
+             <<" nnz="<<qp.A->nzmax<<"\n";
+    int show_cols = std::min((int)qp.A->ncol,5);
+    for(int col=0; col< show_cols; col++){
+      int start= qp.A->p[col];
+      int end  = qp.A->p[col+1];
+      for(int idx=start; idx<end; idx++){
+        int row= qp.A->i[idx];
+        if(row<5){
+          double val= qp.A->x[idx];
+          std::cout<<"  A("<<row<<","<<col<<")="<<val<<"\n";
+        }
+      }
+    }
+  }
+  if(qp.b){
+    std::cout<<"b: [";
+    int show_b= std::min(qp.me,5);
+    for(int i=0;i< show_b;i++){
+      std::cout<< qp.b[i]<<" ";
+    }
+    std::cout<<( (qp.me>5) ? "...]\n" : "]\n");
+  }
+
+  // inequality constraints C, l, u
+  if(qp.C){
+    std::cout<<"C: "<<qp.C->nrow<<" x "<<qp.C->ncol
+             <<" nnz="<<qp.C->nzmax<<"\n";
+    int show_cols = std::min((int)qp.C->ncol,5);
+    for(int col=0; col< show_cols; col++){
+      int start= qp.C->p[col];
+      int end  = qp.C->p[col+1];
+      for(int idx=start; idx<end; idx++){
+        int row= qp.C->i[idx];
+        if(row<5){
+          double val= qp.C->x[idx];
+          std::cout<<"  C("<<row<<","<<col<<")="<<val<<"\n";
+        }
+      }
+    }
+  }
+  if(qp.l && qp.u){
+    int show_ineq= std::min(qp.mi,5);
+    std::cout<<"l: [";
+    for(int i=0;i< show_ineq;i++){
+      std::cout<< qp.l[i]<<" ";
+    }
+    std::cout<<( (qp.mi>5) ? "...]\n" : "]\n");
+    std::cout<<"u: [";
+    for(int i=0;i< show_ineq;i++){
+      std::cout<< qp.u[i]<<" ";
+    }
+    std::cout<<( (qp.mi>5) ? "...]\n" : "]\n");
+  }
+}
+
 
 /*
  * Solving Hx = q
@@ -14,26 +186,31 @@
  */
 
 int main(int argc, char *argv[]){
- /// Declaring input matrices
- size_t sizeH;
- size_t nnzH;
- sizeH = 2;
- nnzH = 2;
- auto *q = new double[sizeH];
- auto *Hp = new int[sizeH+1];
- auto *Hi = new int[nnzH];
- auto *Hx = new double[nnzH];
+  if(argc<2){
+    std::cout<<"usage: "<<argv[0]<<" <qp_smp.yml>\n";
+    return 1;
+  }
+  std::string fname=argv[1];
+  QPProblem qp;
+  bool ok=parse_qp_yaml(fname,qp);
+  if(!ok){
+    std::cerr<<"parse failed\n";
+    return 2;
+  }
+  std::cout<<"parsed n="<<qp.n<<", me="<<qp.me<<", mi="<<qp.mi<<"\n";
 
- q[0] = -4; q[1] = -4;
+  print_qp_debug(qp);
 
- Hp[0]=0;Hp[1]=1;Hp[2]=2;
- Hi[0]=0;Hi[1]=1;
- Hx[0]=2;Hx[1]=2;
+  // 2) Transpose A
+  nasoq::CSC *AT = nullptr;
+  transpose_unsym(qp.A, AT);  // <== call with 'qp.A', not 'qp.A->nrow' etc.
 
- auto *H = new nasoq::CSC; H->nzmax = nnzH; H->ncol= H->nrow =sizeH;
- H->p = Hp; H->i = Hi; H->x = Hx; H->stype=-1; H->packed=1;
-/// Solving the linear system
- auto *lbl = new nasoq::SolverSettings(H,q);
+  // 3) Transpose C
+  nasoq::CSC *CT = nullptr;
+  transpose_unsym(qp.C, CT);
+
+ /// Solving the linear system
+ auto *lbl = new nasoq::SolverSettings(qp.H, qp.q, qp.A, AT, qp.C, CT);
  lbl->ldl_variant = 2; // set it to 4 if your C++ compiler supports openmp
  lbl->req_ref_iter = 2;
  lbl->solver_mode = 0;
@@ -45,28 +222,31 @@ int main(int argc, char *argv[]){
  /// Printing results
  // expected x={-2,-2};
  std::cout<<"Solution: ";
- for (int i = 0; i < sizeH; ++i) {
-  std::cout<<x[i]<<",";
- }
+// for (int i = 0; i < sizeH; ++i) {
+//  std::cout<<x[i]<<",";
+// }
 
- /// Solving new RHS for the same factor
- auto *new_q = new double[sizeH];
- new_q[0] = 8; new_q[1] = 8;
- lbl->solve_only(1, new_q);
- /// Printing results
- // expected x={4,4};
- std::cout<<"Solution: ";
- for (int i = 0; i < sizeH; ++i) {
-  std::cout<<x[i]<<",";
- }
+std::cout << "GMRES / iterative refinement steps: " << lbl->num_ref_iter << "\n";
 
- delete lbl;
- delete []Hp;
- delete []Hi;
- delete []Hx;
- delete []q;
- delete []x;
- delete []new_q;
- delete H;
+// 2) Print raw timing info (analysis/factor/solve/etc.)
+if(lbl->psi){
+  lbl->psi->print_profiling(); 
+  // This prints lines like:
+//   analysis time: xx; fact time: yy; update time: zz; reordering pivot time: ww; solve time: vv;
+}
+
+// 3) If you want the solver's built-in backward error for A*x=b:
+//    (only meaningful if s.build_super_matrix() or s.A was an actual system matrix)
+lbl->compute_norms();            // compute norms of A, x, b, Ax-b
+double be = lbl->backward_error();
+std::cout << "Backward error = " << be << std::endl;
+
+if (lbl->L) {
+  std::cout << "Number of supernodes: " << lbl->L->nsuper << std::endl;
+}
+
+ delete AT;
+ delete CT;
+
  return 0;
 }
