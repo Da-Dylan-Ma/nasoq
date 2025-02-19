@@ -195,7 +195,7 @@ int main(int argc, char *argv[]){
 
   // 2) Transpose A
   nasoq::CSC *AT = nullptr;
-  transpose_unsym(qp.A, AT);  // <== call with 'qp.A', not 'qp.A->nrow' etc.
+  transpose_unsym(qp.A, AT);
 
   // 3) Transpose C
   nasoq::CSC *CT = nullptr;
