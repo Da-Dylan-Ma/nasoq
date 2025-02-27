@@ -216,11 +216,14 @@ namespace nasoq {
    ss = new SolverSettings(H, sKKTrhs_init, B, BT);
   }
 #ifdef OPENMP
-  ss->ldl_variant = 4;
+//  ss->ldl_variant = 4;
+  ss->ldl_variant = 1;
 #else
-  ss->ldl_variant = 2;
+//  ss->ldl_variant = 2;
+     ss->ldl_variant = 1;
 #endif
-  ss->ldl_update_variant = 2;
+//  ss->ldl_update_variant = 2;
+     ss->ldl_update_variant = 1;
   ss->solver_mode = 1;
   ss->req_ref_iter = max_iter;
   ss->max_inner_iter = max_iter;
