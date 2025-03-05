@@ -256,7 +256,7 @@ int main(int argc, char *argv[]){
 
  /// Printing results
  if(converged)
-  std::cout<<"The problem is converged\n";
+  std::cout<<"The problem is converged:" << converged << std::endl;
 
  // expected x={0.4,1.2};
  auto *x = qm->primal_vars;
@@ -265,12 +265,16 @@ int main(int argc, char *argv[]){
   std::cout<<x[i]<<",";
  }
 
+ std::cout << std::endl;
+
  // expected z = {1.6,0,0,0}
  std::cout<<"\nDual variables: ";
  auto *z = qm->dual_vars;
  for (int i = 0; i < A_size1; ++i) {
   std::cout<<z[i]<<",";
  }
+
+ std::cout << std::endl;
 
     delete qm;
     delete [] Hp;
