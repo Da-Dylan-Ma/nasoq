@@ -5,7 +5,7 @@
 
 #include <cassert>
 #include <chrono>
-
+#include <cmath>
 
 #include "nasoq/ldl/Serial_update_ldl.h"
 
@@ -15,16 +15,245 @@
 
 namespace nasoq {
 
-    void custom_sym_dgemm(
-            int nSupRs, int ndrow1, int supWdts,
-            double* trn_diag, int nSNRCur, double* src, double* contribs
-    ) {
-        Eigen::Map<Eigen::MatrixXd> A(trn_diag, nSupRs, supWdts);  // trn_diag is nSupRs x supWdts
-        Eigen::Map<Eigen::MatrixXd> B(src, nSNRCur, supWdts);       // src is nSNRCur x supWdts (column-major)
-        Eigen::Map<Eigen::MatrixXd> C(contribs, nSupRs, ndrow1);   // contribs is nSupRs x ndrow1
+    void custom_sym_dgemm(const char* transA, const char* transB,
+                          const int* M, const int* N, const int* K,
+                          const double* alpha,
+                          const double* A, const int* ldA,
+                          const double* B, const int* ldB,
+                          const double* beta,
+                          double* C, const int* ldC)
+    {
+        bool A_is_trans = (transA[0] == 'T' || transA[0] == 't' || transA[0] == 'C' || transA[0] == 'c');
+        bool B_is_trans = (transB[0] == 'T' || transB[0] == 't' || transB[0] == 'C' || transB[0] == 'c');
 
-        C.noalias() = A * B.transpose();
+        Eigen::Map<
+                const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>,
+                0,
+                Eigen::OuterStride<>
+        > matA(
+                A,
+                (A_is_trans ? *K : *M),
+                (A_is_trans ? *M : *K),
+                Eigen::OuterStride<>(*ldA)
+        );
+
+        Eigen::Map<
+                const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>,
+                0,
+                Eigen::OuterStride<>
+        > matB(
+                B,
+                (B_is_trans ? *N : *K),
+                (B_is_trans ? *K : *N),
+                Eigen::OuterStride<>(*ldB)
+        );
+
+        Eigen::Map<
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>,
+                0,
+                Eigen::OuterStride<>
+        > matC(
+                C,
+                *M,
+                *N,
+                Eigen::OuterStride<>(*ldC)
+        );
+
+        Eigen::MatrixXd Aop;
+        if (A_is_trans) {
+            Aop = matA.transpose();
+        } else {
+            Aop = matA;
+        }
+
+        Eigen::MatrixXd Bop;
+        if (B_is_trans) {
+            Bop = matB.transpose();
+        } else {
+            Bop = matB;
+        }
+
+        matC = (*beta) * matC + (*alpha) * (Aop * Bop);
     }
+
+    // TODO: Double check this, leading to weird intermediate numbers
+    int custom_dsytrf(int matrix_layout, char uplo, int n, double* a, int lda, int* ipiv) {
+        if (matrix_layout != 101) return -1;
+        if (uplo != 'L' && uplo != 'l') return -2;
+        if (n <= 0) return 0;
+        typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatC;
+        Eigen::Map<MatC, 0, Eigen::OuterStride<>> M(a, n, n, Eigen::OuterStride<>(lda));
+        double alpha = (1.0 + std::sqrt(17.0)) / 8.0;
+        int info = 0;
+        int k = n;
+        while (k > 0) {
+            int kstep = 1;
+            int imax = k;
+            double absakk = std::fabs(M(k - 1, k - 1));
+            double colmax = 0.0;
+            if (k > 1) {
+                for (int i = 0; i < k - 1; i++) {
+                    double val = std::fabs(M(k - 1, i));
+                    if (val > colmax) {
+                        colmax = val;
+                        imax = i + 1;
+                    }
+                }
+                if (absakk < alpha * colmax) {
+                    double rowmax = 0.0;
+                    int irow = imax - 1;
+                    for (int j = k - 1; j < n; j++) {
+                        double val = std::fabs(M(irow, j));
+                        if (val > rowmax) rowmax = val;
+                    }
+                    if (std::fabs(M(irow, irow)) < alpha * rowmax) kstep = 2;
+                }
+            }
+            if (kstep == 1) {
+                if (imax != k) {
+                    M.row(k - 1).swap(M.row(imax - 1));
+                    M.col(k - 1).swap(M.col(imax - 1));
+                    ipiv[k - 1] = imax;
+                } else {
+                    ipiv[k - 1] = k;
+                }
+                if (std::fabs(M(k - 1, k - 1)) < 1e-15 && info == 0) info = k;
+                if (k > 1) {
+                    double pivot = M(k - 1, k - 1);
+                    if (std::fabs(pivot) < 1e-15) pivot = (pivot < 0.0 ? -1e-15 : 1e-15);
+                    for (int i = 0; i < k - 1; i++) M(k - 1, i) /= pivot;
+                    for (int j = 0; j < k - 1; j++) {
+                        double c = M(k - 1, j);
+                        for (int i = 0; i <= j; i++) M(j, i) -= c * M(k - 1, i);
+                    }
+                }
+                k--;
+            } else {
+                if (k < 2) {
+                    ipiv[k - 1] = k;
+                    if (std::fabs(M(k - 1, k - 1)) < 1e-15 && info == 0) info = k;
+                    k--;
+                    continue;
+                }
+                int km1 = k - 1;
+                if (imax != km1) {
+                    M.row(km1 - 1).swap(M.row(imax - 1));
+                    M.col(km1 - 1).swap(M.col(imax - 1));
+                }
+                double d12 = M(k - 1, km1 - 1);
+                double d11 = M(km1 - 1, km1 - 1);
+                double d22 = M(k - 1, k - 1);
+                double det = d11 * d22 - d12 * d12;
+                if (std::fabs(det) < 1e-15 && info == 0) info = k;
+                M(km1 - 1, km1 - 1) = d22 / det;
+                M(k - 1, k - 1) = d11 / det;
+                M(k - 1, km1 - 1) = -d12 / det;
+                ipiv[k - 1] = -imax;
+                ipiv[k - 2] = -imax;
+                if (k > 2) {
+                    for (int i = 0; i < k - 2; i++) {
+                        double akm1 = M(km1 - 1, i);
+                        double ak = M(k - 1, i);
+                        M(km1 - 1, i) = (d22 * akm1 - d12 * ak) / det;
+                        M(k - 1, i) = (-d12 * akm1 + d11 * ak) / det;
+                    }
+                    for (int j = 0; j < k - 2; j++) {
+                        double v1 = M(km1 - 1, j);
+                        double v2 = M(k - 1, j);
+                        for (int i = j; i < k - 2; i++) {
+                            M(i, j) -= (v1 * M(km1 - 1, i) + v2 * M(k - 1, i));
+                        }
+                    }
+                }
+                k -= 2;
+            }
+        }
+        return info;
+    }
+
+    // TODO: Double check this, leading to a higher lag-res
+    int custom_dlapmt(int matrix_layout, int forwrd, int m, int n, double* x, int ldx, int* k) {
+        if (matrix_layout != 101) return -1;
+        if (m <= 0 || n <= 0) return 0;
+
+        Eigen::Map<
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>,
+                0,
+                Eigen::OuterStride<>
+        > M(x, m, n, Eigen::OuterStride<>(ldx));
+
+        Eigen::MatrixXd tmp(m, n);
+
+        // Forward permutation: new col J = old col K(J).
+        // "X(*,K(J)) is moved to X(*,J) for J=1..N."
+        if (forwrd) {
+            for (int j = 0; j < n; j++) {
+                int oldCol = k[j] - 1;
+                tmp.col(j) = M.col(oldCol);
+            }
+        }
+            // Backward permutation: new col K(J) = old col J.
+            // "X(*,J) is moved to X(*,K(J)) for J=1..N."
+        else {
+            for (int j = 0; j < n; j++) {
+                int newCol = k[j] - 1;
+                tmp.col(newCol) = M.col(j);
+            }
+        }
+
+        M = tmp;
+        return 0;
+    }
+
+    // TODO: Double check this
+    void custom_dtrsm(const char* side,
+                          const char* uplo,
+                          const char* trans,
+                          const char* diag,
+                          const int* M,
+                          const int* N,
+                          const double* alpha,
+                          const double* A,
+                          const int* lda,
+                          double* B,
+                          const int* ldb)
+    {
+        bool sideR = (side[0] == 'R' || side[0] == 'r');
+        bool uploL = (uplo[0] == 'L' || uplo[0] == 'l');
+        bool transT = (trans[0] == 'T' || trans[0] == 't' || trans[0] == 'C' || trans[0] == 'c');
+        bool unitD = (diag[0] == 'U' || diag[0] == 'u');
+        if (!sideR || !uploL || !transT || !unitD) {
+            Eigen::Map<Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::ColMajor>,
+                    0, Eigen::OuterStride<> >
+                    matB(B, *M, *N, Eigen::OuterStride<>(*ldb));
+            if (*alpha != 1.0) {
+                matB *= (*alpha);
+            }
+            return;
+        }
+        if (*N <= 0 || *M < 0) return;
+        if (*lda < *N) return;
+        Eigen::MatrixXd Ablock = Eigen::MatrixXd::Zero(*N, *N);
+        for (int col = 0; col < *N; col++) {
+            for (int row = col; row < *N; row++) {
+                Ablock(row, col) = A[col*(*lda) + row];
+            }
+        }
+        for (int i = 0; i < *N; i++) {
+            Ablock(i,i) = 1.0;
+        }
+        Eigen::Map<Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::ColMajor>,
+                0, Eigen::OuterStride<> >
+                matB(B, *M, *N, Eigen::OuterStride<>(*ldb));
+        if (*alpha != 1.0) {
+            matB *= (*alpha);
+        }
+        matB.transposeInPlace();
+        Eigen::MatrixXd Aupper = Ablock.transpose();
+        Aupper.triangularView<Eigen::Upper>().solveInPlace(matB);
+        matB.transposeInPlace();
+    }
+
 
  bool
  update_ldl_left_sn_02_v2(int n, int *c, int *r, double *values, size_t *lC, int *lR, size_t *Li_ptr, double *lValues,
@@ -162,18 +391,14 @@ namespace nasoq {
     int ndrow3 = nSupRs - ndrow1;
     src = &lValues[lC[cSN] + lb];//first element of src supernode starting from row lb
     double *srcL = &lValues[lC[cSN] + ub + 1];
+
+    // TODO: Replace this
     blocked_2by2_mult(supWdts, nSupRs, &D[cSN], src, trn_diag, nSNRCur, n);
-#ifdef OPENBLAS
-    cblas_dgemm(CblasColMajor,CblasNoTrans,CblasConjTrans, nSupRs, ndrow1, supWdts, 1.0, trn_diag, nSupRs,
-                src, nSNRCur, 0.0, contribs, nSupRs);
-#else
-       custom_sym_dgemm("N", "C", &nSupRs, &ndrow1, &supWdts, one, trn_diag, &nSupRs,
+
+    custom_sym_dgemm("N", "C", &nSupRs, &ndrow1, &supWdts, one, trn_diag, &nSupRs,
           src, &nSNRCur, zero, contribs, &nSupRs);
-#endif
 
-
-//   }
-    //copying contrib to L
+       //copying contrib to L
     for (int i = 0; i < ndrow1; ++i) {//Copy contribs to L
      int col = map[lR[Li_ptr_cSN + i + lb]];//col in the SN
      //double ddiag = 1.0 ;/// D[col];
@@ -188,7 +413,11 @@ namespace nasoq {
      }
     }
    }
+
+   // TODO: Replace this
    LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'L', supWdt, cur, nSupR, ipiv);
+   // custom_dsytrf(LAPACK_COL_MAJOR, 'L', supWdt, cur, nSupR, ipiv);
+   // TODO: Replace this, this looks fine but it is in the sysblas file
    int is_perm = reorder_after_sytrf(supWdt, cur, nSupR, ipiv,
                                      &perm_piv[curCol], &D[curCol], n, &swap_full[curCol], ws + supWdt);
    // re-order the columns of the super-node
@@ -198,7 +427,9 @@ namespace nasoq {
    }
 
    if (is_perm) {
-    LAPACKE_dlapmt(LAPACK_COL_MAJOR, 1, rowNo, supWdt, &cur[supWdt], nSupR, &perm_piv[curCol]);
+       // TODO: Replace this
+//    LAPACKE_dlapmt(LAPACK_COL_MAJOR, 1, rowNo, supWdt, &cur[supWdt], nSupR, &perm_piv[curCol]);
+     custom_dlapmt(LAPACK_COL_MAJOR, 1, rowNo, supWdt, &cur[supWdt], nSupR, &perm_piv[curCol]);
     perm_req.push_back(s);
    }
 
@@ -227,10 +458,13 @@ namespace nasoq {
    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasConjTrans, CblasUnit, rowNo, supWdt, 1.0,
                cur, nSupR, &cur[supWdt], nSupR);
 #else
+      // TODO: Replace this
    SYM_DTRSM("R", "L", "C", "U", &rowNo, &supWdt, one,
          cur, &nSupR, &cur[supWdt], &nSupR);
-
 #endif
+
+//      custom_dtrsm("R", "L", "C", "U", &rowNo, &supWdt, one,
+//                   cur, &nSupR, &cur[supWdt], &nSupR);
 
 
 //  /////
@@ -245,6 +479,7 @@ namespace nasoq {
 //  std::cout<<"\n";
 //  /////
 
+    // TODO: Replace this
    blocked_2by2_solver(supWdt, &D[curCol], &cur[supWdt], rowNo, nSupR, n);
 
 /*  /////

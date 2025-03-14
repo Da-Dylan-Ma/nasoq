@@ -5,7 +5,6 @@
 #include "nasoq/ldl/Serial_blocked_ldl.h"
 
 #include <cassert>
-#include <nasoq/common/Sym_BLAS.h>
 
 #include <iostream>
 #include <vector>
@@ -111,47 +110,6 @@ static void row_reordering(int /*supNo*/, size_t* /*lC*/, int* /*Li_ptr*/,
 {
     // no-op
 }
-
-//static CSC* ptranspose(CSC* A,int /*dummy*/,const int* /*perm*/,
-//                       void* /*workspace*/,int /*dosymm*/,int &status)
-//{
-//    if(!A){status=-1; return nullptr;}
-//    CSC* T = new CSC;
-//    int m=A->nrow,n=A->ncol;
-//    T->nrow=n; T->ncol=m; T->stype=-1; T->xtype=1;
-//    T->nzmax=A->nzmax; T->packed=1; T->sorted=1;
-//    T->p=new int[T->ncol+1]();
-//    T->i=new int[T->nzmax];
-//    T->x=new double[T->nzmax];
-//    for(int col=0; col<n; col++){
-//        for(int idx=A->p[col]; idx<A->p[col+1]; idx++){
-//            int row=A->i[idx];
-//            if(row>=0 && row<T->ncol){
-//                T->p[row]++;
-//            }
-//        }
-//    }
-//    int sum=0;
-//    for(int i=0;i<T->ncol;i++){
-//        int tmp=T->p[i];
-//        T->p[i]=sum;
-//        sum+=tmp;
-//    }
-//    T->p[T->ncol]= A->nzmax;
-//    std::vector<int> current(T->ncol,0);
-//    for(int col=0; col<n; col++){
-//        for(int idx=A->p[col]; idx<A->p[col+1]; idx++){
-//            int row=A->i[idx];
-//            double val=A->x[idx];
-//            int pos= T->p[row] + current[row];
-//            T->i[pos]= col;
-//            T->x[pos]= val;
-//            current[row]++;
-//        }
-//    }
-//    status=0;
-//    return T;
-//}
 
 /* ---------------------------------------------------------
    2) Basic (non-pivot) supernodal factor: ldl_left_sn_01

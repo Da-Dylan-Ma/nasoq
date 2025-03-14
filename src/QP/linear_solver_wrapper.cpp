@@ -605,7 +605,6 @@ namespace nasoq {
      std::cout << "Entered numerical factorization" << std::endl;
   switch (ldl_variant) {
    case 1:
-//    MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);
     SET_BLAS_THREAD(num_thread);
     psi->start = psi->tic();
     ret_val = ldl_left_sn_01(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
@@ -620,147 +619,8 @@ namespace nasoq {
                              max_sup_wid + 1, max_col + 1, num_pivot);
     psi->end = psi->toc();
     psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    //MKL_Domain_Set_Num_Threads(1, MKL_DOMAIN_BLAS);
     SET_BLAS_THREAD(1);
           std::cout << "Using the supernodal-nonpivoting variant" << std::endl;
-    break;
-   case 2:
-    //MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);
-    SET_BLAS_THREAD(num_thread);
-    psi->start = psi->tic();
-    ret_val = ldl_left_sn_02_v2(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
-                                L->p, L->s, L->i_ptr, valL,
-                                d_val,
-                                L->super, L->nsuper, psi->timing_chol,
-#ifndef PRUNE
-                                atree, AT_ord->p, AT_ord->i, L->col2Sup,
-#else
-      prune_ptr,prune_set,
-#endif
-                                max_sup_wid + 1, max_col + 1, num_pivot, perm_piv,
-                                L->sParent);
-    reorder_matrix();
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    //MKL_Domain_Set_Num_Threads(1, MKL_DOMAIN_BLAS);
-    SET_BLAS_THREAD(1);
-    break;
-   case 3://parallel static
-    psi->start = psi->tic();
-#ifdef OPENMP
-    ret_val = ldl_left_sn_parallel_01(A_ord->ncol, A_ord->p, A_ord->i,
-                                      A_ord->x, L->p, L->s, L->i_ptr, valL,
-                                      d_val,
-                                      L->super, L->nsuper, psi->timing_chol,
-#ifndef PRUNE
-                                      atree, AT_ord->p, AT_ord->i,
-                                      L->col2Sup,
-#else
-      prune_ptr,prune_set,
-#endif
-                                      n_level, level_ptr, level_set,
-                                      n_par, par_ptr, par_set,
-                                      chunk, num_thread,
-                                      max_sup_wid + 1, max_col + 1, num_pivot,
-                                      reg_diag);
-#endif
-
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    break;
-   case 4://Parallel SBK
-    psi->start = psi->tic();
-#ifdef OPENMP
-    ret_val = ldl_left_sn_parallel_02(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
-                                      L->p, L->s, L->i_ptr, valL,
-                                      d_val,
-                                      L->super, L->nsuper, psi->timing_chol,
-#ifndef PRUNE
-                                      atree, AT_ord->p, AT_ord->i, L->col2Sup,
-#else
-      prune_ptr,prune_set,
-#endif
-                                      n_level, level_ptr, level_set,
-                                      n_par, par_ptr, par_set,
-                                      chunk, num_thread,
-                                      max_sup_wid + 1, max_col + 1, num_pivot,
-                                      perm_piv);
-#endif
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    reorder_matrix();
-    //print_vec("simpl-o: ",0,A_ord->ncol,d_val);
-    break;
-
-   case 5://Parallel mixed static SBK
-    psi->start = psi->tic();
-#ifdef OPENMP
-    ret_val = ldl_left_sn_parallel_03(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
-                                      L->p, L->s, L->i_ptr, valL,
-                                      d_val,
-                                      L->super, L->nsuper, psi->timing_chol,
-#ifndef PRUNE
-                                      atree, AT_ord->p, AT_ord->i,
-                                      L->col2Sup,
-#else
-      prune_ptr,prune_set,
-#endif
-                                      n_level, level_ptr, level_set,
-                                      n_par, par_ptr, par_set,
-                                      chunk, num_thread,
-                                      max_sup_wid + 1, max_col + 1, num_pivot,
-                                      perm_piv);
-#endif
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    reorder_matrix();
-    break;
-   case 6: //Simplicial LDL
-    psi->start = psi->tic();
-    if (is_super) {
-     //convert_supernode_to_simplicial();
-     bcsc2csc_aggressive_int(A_ord->ncol, L->nsuper, L->p, L->s, L->i_ptr,
-                             L->super, valL, l_pb, l_i, l_x);
-/*     for (int i = 0; i < L->nzmax; ++i) {
-      valL[i]=0;
-     }*/
-     for (int i = 0; i < A_ord->ncol; ++i) {
-      d_val[i] = 0;
-     }
-     is_super = 0;
-    }
-    ldl_left_simplicial_02(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
-                           AT_ord->p, AT_ord->i,
-                           l_pb, l_i, l_x, d_val, etree_mod, ws,
-                           ws_int);
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
-    //print_csc("L:\n",A_ord->ncol,A_ord->p,A_ord->i,A_ord->x);
-    break;
-   case 7:// parallel simplicial LDL
-    psi->start = psi->tic();
-    if (is_super) {
-     //convert_supernode_to_simplicial();
-     bcsc2csc_aggressive_int(A_ord->ncol, L->nsuper, L->p, L->s, L->i_ptr,
-                             L->super, valL, l_pb, l_i, l_x);
-/*     for (int i = 0; i < L->nzmax; ++i) {
-      valL[i]=0;
-     }*/
-     for (int i = 0; i < A_ord->ncol; ++i) {
-      d_val[i] = 0;
-     }
-     is_super = 0;
-    }
-
-#ifdef OPENMP
-    ldl_parallel_left_simplicial_01(A_ord->ncol, A_ord->p, A_ord->i, A_ord->x,
-                                    AT_ord->p, AT_ord->i,
-                                    l_pb, l_i, l_x, d_val, etree_mod,
-                                    n_level, level_ptr, n_par_s, par_ptr_s,
-                                    par_set_s);
-#endif
-    psi->end = psi->toc();
-    psi->fact_time += psi->elapsed_time(psi->start, psi->end);
     break;
    default:
     std::cout << " Wrong algorithm type! \n";
@@ -1155,24 +1015,6 @@ namespace nasoq {
   //print_csc("\nORdered: ",A_ord->ncol,A_ord->p,A_ord->i,A_ord->x);
   switch (ldl_update_variant) {
    case 1:
-    //MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);
-    SET_BLAS_THREAD(num_thread);
-    psi->start = psi->toc();
-    retval = update_ldl_left_sn_01(A_ord->nrow, A_ord->p, A_ord->i, A_ord->x,
-                                   L->p, L->s, L->i_ptr, valL,
-                                   d_val,
-                                   L->super, L->nsuper, psi->timing_chol,
-                                   atree, AT_ord->p, AT_ord->i, L->col2Sup,
-                                   modified_sns, max_sup_wid + 1, max_col + 1,
-                                   num_pivot);
-    a_consistent = 1;
-    psi->end = psi->toc();
-    psi->update_time += psi->elapsed_time(psi->start, psi->end);
-    //MKL_Domain_Set_Num_Threads(1, MKL_DOMAIN_BLAS);
-    SET_BLAS_THREAD(1);
-    break;
-   case 2:
-    //MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);
     SET_BLAS_THREAD(num_thread);
     psi->start = psi->toc();
     retval = update_ldl_left_sn_02_v2(A_ord->nrow, A_ord->p, A_ord->i, A_ord->x,
@@ -1190,94 +1032,7 @@ namespace nasoq {
      reorder_matrix();
     psi->end = psi->toc();
     psi->piv_reord += psi->elapsed_time(psi->start, psi->end);
-    //MKL_Domain_Set_Num_Threads(1, MKL_DOMAIN_BLAS);
     SET_BLAS_THREAD(1);
-    break;
-   case 3://parallel static
-    std::cout << "Not supported!\n";
-    return -1;
-    break;
-   case 4://Parallel SBK
-    psi->start = psi->toc();
-
-#ifdef OPENMP
-    retval = update_ldl_left_sn_parallel_02(A_ord->nrow, A_ord->p, A_ord->i, A_ord->x,
-                                            L->p, L->s, L->i_ptr, valL,
-                                            d_val,
-                                            L->super, L->nsuper, psi->timing_chol,
-#ifndef PRUNE
-                                            atree, AT_ord->p, AT_ord->i, L->col2Sup,
-#else
-      prune_ptr,prune_set,
-#endif
-                                            n_level, level_ptr, level_set,
-                                            n_par, par_ptr, par_set,
-                                            chunk, num_thread,
-                                            max_sup_wid + 1, max_col + 1, num_pivot,
-                                            perm_piv, marked);
-#endif
-
-    a_consistent = 0;
-    psi->end = psi->toc();
-    psi->update_time += psi->elapsed_time(psi->start, psi->end);
-    psi->start = psi->toc();
-    if (num_pivot > 0)
-     reorder_matrix();
-    psi->end = psi->toc();
-    psi->piv_reord += psi->elapsed_time(psi->start, psi->end);
-    break;
-
-   case 5://Parallel mixed static SBK
-    std::cout << "Not supported!\n";
-    return -1;
-    break;
-   case 6:
-    if (is_super) {
-     //convert_supernode_to_simplicial();
-     /*bcsc2csc_aggressive_int(A_ord->ncol, L->nsuper, L->p, L->s, L->i_ptr,
-                             L->super, valL, l_pb, l_i, l_x);*/
-     is_super = 0;
-    }
-    //print_csc("l before: \n",A_ord->ncol,l_pb,l_i,l_x);
-    psi->start = psi->toc();
-
-#ifdef OPENMP
-    retval = update_ldl_left_simplicial_01(A_ord->ncol, A_ord->p, A_ord->i,
-                                           A_ord->x,
-                                           AT_ord->p, AT_ord->i,
-                                           l_pb, l_i, l_x, d_val,
-                                           etree_mod, modified_sns, ws,
-                                           ws_int);
-#endif
-    psi->end = psi->toc();
-    psi->update_time += psi->elapsed_time(psi->start, psi->end);
-    //print_vec("simpl: ",0,A_ord->ncol,d_val);
-    //print_csc("l: \n",A_ord->ncol,l_pb,l_i,l_x);
-    break;
-   case 7:
-    if (is_super) {
-     //convert_supernode_to_simplicial();
-     /*bcsc2csc_aggressive_int(A_ord->ncol, L->nsuper, L->p, L->s, L->i_ptr,
-                             L->super, valL, l_pb, l_i, l_x);*/
-     is_super = 0;
-    }
-    //print_vec("mmm : ",0, A_ord->ncol,marked);
-    //print_csc("l before: \n",A_ord->ncol,l_pb,l_i,l_x);
-    psi->start = psi->toc();
-
-#ifdef OPENMP
-    retval = update_ldl_parallel_left_simplicial_01(A_ord->ncol, A_ord->p,
-                                                    A_ord->i, A_ord->x,
-                                                    AT_ord->p, AT_ord->i,
-                                                    l_pb, l_i, l_x, d_val,
-                                                    etree_mod, marked,
-                                                    n_level, level_ptr, n_par_s,
-                                                    par_ptr_s,
-                                                    par_set_s);
-#endif
-    psi->end = psi->toc();
-    psi->update_time += psi->elapsed_time(psi->start, psi->end);
-    //print_csc("l after: \n",A_ord->ncol,l_pb,l_i,l_x);
     break;
    default:
     std::cout << "Wrong algorithm type!\n";
