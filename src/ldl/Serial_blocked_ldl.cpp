@@ -266,4 +266,5 @@ bool ldl_left_sn_01(int n, int*c, int*r, double*values,
     delete[]contribs; delete[]trn_diag;
     return true;
 }
+
 }

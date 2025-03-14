@@ -258,6 +258,12 @@ int main(int argc, char *argv[]){
  if(converged)
   std::cout<<"The problem is converged:" << converged << std::endl;
 
+ std::cout << "cons_sat_norm: " << qm->cons_sat_norm << std::endl;
+ std::cout << "lag_res: " << qm->lag_res << std::endl;
+ std::cout << "non_negativity_infn: " << qm->non_negativity_infn << std::endl;
+ std::cout << "complementarity_infn: " << qm->complementarity_infn << std::endl;
+ std::cout << "eps_abs: " << qm->eps_abs << std::endl;
+
  // expected x={0.4,1.2};
  auto *x = qm->primal_vars;
  std::cout<<"Primal variables: ";
@@ -275,6 +281,31 @@ int main(int argc, char *argv[]){
  }
 
  std::cout << std::endl;
+
+    // === CSV File Handling ===
+    std::ofstream csv_file;
+    std::string csv_filename = "results.csv";
+    bool file_exists = std::ifstream(csv_filename).good(); // Check if file exists
+
+    csv_file.open(csv_filename, std::ios::app); // Open in append mode
+
+    // Write header if the file is newly created
+    if (!file_exists) {
+        csv_file << "Test Case,eps_abs,Convergence,cons_sat_norm,lag_res,non_negativity_infn,complementarity_infn,Iterations\n";
+    }
+
+    // Append results
+    csv_file << fname << ","
+             << qm->eps_abs << ","
+             << converged << ","
+             << qm->cons_sat_norm << ","
+             << qm->lag_res << ","
+             << qm->non_negativity_infn << ","
+             << qm->complementarity_infn << ","
+             << qm->num_iter << "\n";
+
+    csv_file.close();
+
 
     delete qm;
     delete [] Hp;

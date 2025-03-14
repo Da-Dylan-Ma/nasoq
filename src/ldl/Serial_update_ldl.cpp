@@ -11,8 +11,20 @@
 
 #include "nasoq/common/Reach.h"
 #include "nasoq/common/Sym_BLAS.h"
+#include <Eigen/Dense>
 
 namespace nasoq {
+
+    void custom_sym_dgemm(
+            int nSupRs, int ndrow1, int supWdts,
+            double* trn_diag, int nSNRCur, double* src, double* contribs
+    ) {
+        Eigen::Map<Eigen::MatrixXd> A(trn_diag, nSupRs, supWdts);  // trn_diag is nSupRs x supWdts
+        Eigen::Map<Eigen::MatrixXd> B(src, nSNRCur, supWdts);       // src is nSNRCur x supWdts (column-major)
+        Eigen::Map<Eigen::MatrixXd> C(contribs, nSupRs, ndrow1);   // contribs is nSupRs x ndrow1
+
+        C.noalias() = A * B.transpose();
+    }
 
  bool
  update_ldl_left_sn_02_v2(int n, int *c, int *r, double *values, size_t *lC, int *lR, size_t *Li_ptr, double *lValues,
@@ -155,7 +167,7 @@ namespace nasoq {
     cblas_dgemm(CblasColMajor,CblasNoTrans,CblasConjTrans, nSupRs, ndrow1, supWdts, 1.0, trn_diag, nSupRs,
                 src, nSNRCur, 0.0, contribs, nSupRs);
 #else
-    SYM_DGEMM("N", "C", &nSupRs, &ndrow1, &supWdts, one, trn_diag, &nSupRs,
+       custom_sym_dgemm("N", "C", &nSupRs, &ndrow1, &supWdts, one, trn_diag, &nSupRs,
           src, &nSNRCur, zero, contribs, &nSupRs);
 #endif
 

@@ -9,6 +9,12 @@
 #include <vector>
 
 namespace nasoq {
+
+    void custom_sym_dgemm(
+            int nSupRs, int ndrow1, int supWdts,
+            double* trn_diag, int nSNRCur, double* src, double* contribs
+    );
+
 /*
  * Update-downdate algorithm for LDLT with
  * bunch-kaufman pivoting in each supernode

@@ -327,7 +327,7 @@ namespace nasoq {
   //Putting a small value in diagonals
   base1 = A->ncol;
   for (int l = SMp[A->ncol], j = 0; l < SM_nz; ++l, ++j) {
-   //SMx[l] = 1e-6;
+//   SMx[l] = 1e-6;
    SMi[l] = base1 + j;
   }
 
@@ -602,6 +602,7 @@ namespace nasoq {
  int SolverSettings::numerical_factorization() {
   int ret_val = 0;
   //print_csc("\nORdered: ",A_ord->ncol,A_ord->p,A_ord->i,A_ord->x);
+     std::cout << "Entered numerical factorization" << std::endl;
   switch (ldl_variant) {
    case 1:
 //    MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);
@@ -621,6 +622,7 @@ namespace nasoq {
     psi->fact_time += psi->elapsed_time(psi->start, psi->end);
     //MKL_Domain_Set_Num_Threads(1, MKL_DOMAIN_BLAS);
     SET_BLAS_THREAD(1);
+          std::cout << "Using the supernodal-nonpivoting variant" << std::endl;
     break;
    case 2:
     //MKL_Domain_Set_Num_Threads(num_thread, MKL_DOMAIN_BLAS);

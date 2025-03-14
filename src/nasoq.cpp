@@ -459,10 +459,12 @@ namespace nasoq {
    sKKTrhs[i] = .0;
   }
   ss->ldl_update_variant = 2;
+//     ss->ldl_update_variant = 1;
   //print_vec("\n RHS: \n",0,sKKT->ncol,sKKTrhs);
   solve_kkt(UPDATE); //unconstrained solution
 
   ss->ldl_update_variant = 2;
+//     ss->ldl_update_variant = 1;
   for (int i = 0; i < H->ncol; ++i) {
    primal_vars[i] = kkt_solution[i];
   }
@@ -925,8 +927,10 @@ namespace nasoq {
 #else
   qi->fct_st = qi->tic();
   if (s_type == SOLVE) {
+      std::cout << "Entering first case" << std::endl;
    ss->solve_only();
   } else if (s_type == UPDATE) {
+      std::cout << "Entering update numerical factorization" << std::endl;
 /*   if(qi->sw){ // For measuring the effect of initial factorization
    qi->ini_st = qi->tic();
   }*/
@@ -939,6 +943,7 @@ namespace nasoq {
    //ss->check_ldlt_factor();
    ss->solve_only(); //TODO replace with update_solve
   } else { // refactor
+      std::cout << "Entering numerical factorization" << std::endl;
    ss->numerical_factorization();
    //ss->check_ldlt_factor();
    ss->solve_only();
