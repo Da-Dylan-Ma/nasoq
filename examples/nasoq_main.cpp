@@ -1,327 +1,145 @@
-
-#include <cmath>
 #include <iostream>
-#include <nasoq/nasoq.h>
-#include <cstdio>
-#include <cstring>
-#include <vector>
 #include <fstream>
+#include <cmath>
+#include <nasoq/nasoq.h>
+#include "../codegen/qp_data_static.h"
 
-#include "yaml_qp_parser.h"
-#include "../smp-format/io.h"
+using namespace nasoq;
+using namespace qp_data;
 
-static void print_qp_debug(const QPProblem &qp) {
-    // Hessian H
-    if (qp.H) {
-        std::cout << "H: " << qp.H->nrow << " x " << qp.H->ncol
-                  << " nnz=" << qp.H->nzmax << "\n";
-        int show_cols = std::min((int) qp.H->ncol, 5);
-        for (int col = 0; col < show_cols; col++) {
-            int start = qp.H->p[col];
-            int end = qp.H->p[col + 1];
-            for (int idx = start; idx < end; idx++) {
-                int row = qp.H->i[idx];
-                if (row < 5) {
-                    double val = qp.H->x[idx];
-                    std::cout << "  H(" << row << "," << col << ")=" << val << "\n";
-                }
-            }
-        }
-    }
-
-    // linear q
-    if (qp.q) {
-        std::cout << "q: [";
-        int show_q = std::min(qp.n, 5);
-        for (int i = 0; i < show_q; i++) {
-            std::cout << qp.q[i] << " ";
-        }
-        std::cout << ((qp.n > 5) ? "...]\n" : "]\n");
-    }
-
-    // equality constraints A, b
-    if (qp.A) {
-        std::cout << "A: " << qp.A->nrow << " x " << qp.A->ncol
-                  << " nnz=" << qp.A->nzmax << "\n";
-        int show_cols = std::min((int) qp.A->ncol, 5);
-        for (int col = 0; col < show_cols; col++) {
-            int start = qp.A->p[col];
-            int end = qp.A->p[col + 1];
-            for (int idx = start; idx < end; idx++) {
-                int row = qp.A->i[idx];
-                if (row < 5) {
-                    double val = qp.A->x[idx];
-                    std::cout << "  A(" << row << "," << col << ")=" << val << "\n";
-                }
-            }
-        }
-    }
-    if (qp.b) {
-        std::cout << "b: [";
-        int show_b = std::min(qp.me, 5);
-        for (int i = 0; i < show_b; i++) {
-            std::cout << qp.b[i] << " ";
-        }
-        std::cout << ((qp.me > 5) ? "...]\n" : "]\n");
-    }
-
-    // inequality constraints C, l, u
-    if (qp.C) {
-        std::cout << "C: " << qp.C->nrow << " x " << qp.C->ncol
-                  << " nnz=" << qp.C->nzmax << "\n";
-        int show_cols = std::min((int) qp.C->ncol, 5);
-        for (int col = 0; col < show_cols; col++) {
-            int start = qp.C->p[col];
-            int end = qp.C->p[col + 1];
-            for (int idx = start; idx < end; idx++) {
-                int row = qp.C->i[idx];
-                if (row < 5) {
-                    double val = qp.C->x[idx];
-                    std::cout << "  C(" << row << "," << col << ")=" << val << "\n";
-                }
-            }
-        }
-    }
-    if (qp.l && qp.u) {
-        int show_ineq = std::min(qp.mi, 5);
-        std::cout << "l: [";
-        for (int i = 0; i < show_ineq; i++) {
-            std::cout << qp.l[i] << " ";
-        }
-        std::cout << ((qp.mi > 5) ? "...]\n" : "]\n");
-        std::cout << "u: [";
-        for (int i = 0; i < show_ineq; i++) {
-            std::cout << qp.u[i] << " ";
-        }
-        std::cout << ((qp.mi > 5) ? "...]\n" : "]\n");
-    }
-}
-
-
-nasoq::CSC *build_stacked_constraint(const nasoq::CSC *C,
-                              const double *l,
-                              const double *u,
-                              int mi,      // #rows in C
-                              int n,       // #cols in C
-                              double *&stacked_b) // returned array of size 2*mi
-{
-    if(!C || !l || !u || mi <= 0 || n <= 0){
-        std::cerr << "Invalid input to build_stacked_constraint\n";
-        return nullptr;
-    }
-    // Construct the new matrix stackedC of dimension (2*mi) x n
-    nasoq::CSC *stackedC = new nasoq::CSC;
+CSC *build_stacked_constraint(const CSC *C, const double *l, const double *u, int mi, int n, double *&stacked_b) {
+    CSC *stackedC = new CSC;
     stackedC->nrow = 2 * mi;
     stackedC->ncol = n;
-    // We assume the nonzero pattern is simply doubled:
-    stackedC->nzmax = 2 * (C->p[n]); // p[n] = # of nonzeros in original C
-    stackedC->p = new int[n+1];
+    stackedC->nzmax = 2 * C->p[n];
+    stackedC->p = new int[n + 1];
     stackedC->i = new int[stackedC->nzmax];
     stackedC->x = new double[stackedC->nzmax];
-
-    // Also set metadata
     stackedC->stype = 0;
     stackedC->xtype = 1;
     stackedC->sorted = 1;
     stackedC->packed = 1;
 
-    // We'll fill stackedC->p[j] = #nnz so far up to col j
     stackedC->p[0] = 0;
-    int nnz_so_far = 0;
-
-    // Step 1: copy C col j
-    // Step 2: copy -C col j (row indices shifted by mi)
-    for(int j = 0; j < n; j++){
-        // number of nonzeros in col j of original C
-        int col_start = C->p[j];
-        int col_end   = C->p[j+1];
-
-        // copy C->(col j)
-        for(int pC = col_start; pC < col_end; pC++){
-            int rowC   = C->i[pC];    // row index in [0..mi-1]
-            double valC = C->x[pC];
-            // same row index for the top block
-            stackedC->i[nnz_so_far] = rowC;
-            stackedC->x[nnz_so_far] = valC;
-            nnz_so_far++;
+    int nnz = 0;
+    for (int j = 0; j < n; j++) {
+        int start = C->p[j], end = C->p[j + 1];
+        for (int k = start; k < end; k++) {
+            stackedC->i[nnz] = C->i[k];
+            stackedC->x[nnz] = C->x[k];
+            nnz++;
         }
-        // copy -C->(col j), shifting row indices by mi
-        for(int pC = col_start; pC < col_end; pC++){
-            int rowC   = C->i[pC];
-            double valC = C->x[pC];
-            // row index is rowC + mi
-            stackedC->i[nnz_so_far] = rowC + mi;
-            stackedC->x[nnz_so_far] = -valC; // negative
-            nnz_so_far++;
+        for (int k = start; k < end; k++) {
+            stackedC->i[nnz] = C->i[k] + mi;
+            stackedC->x[nnz] = -C->x[k];
+            nnz++;
         }
-        stackedC->p[j+1] = nnz_so_far;
+        stackedC->p[j + 1] = nnz;
     }
 
-    // Build the stacked_b array: dimension 2*mi
     stacked_b = new double[2 * mi];
-    // top half = u, bottom half = -l
-    for(int i = 0; i < mi; i++){
-        stacked_b[i]       = u[i];   //  C*x <= u
-        stacked_b[i + mi]  = -l[i];  // -C*x <= -l
+    for (int i = 0; i < mi; i++) {
+        stacked_b[i] = u[i];
+        stacked_b[i + mi] = -l[i];
     }
-
     return stackedC;
 }
 
+int main() {
+    size_t n = sizeof(H_p) / sizeof(H_p[0]) - 1;
+    size_t me = sizeof(b) / sizeof(b[0]);
+    size_t mi = sizeof(u) / sizeof(u[0]);
 
-/*
- * Minimizing 1/2 x^THx + q^Tx + C; Cx <= d
- * H and C are sparse nasoq::CSC matrices
- * q and d are dense arrays
- */
+    CSC H, A, C;
+    H.nrow = H.ncol = n;
+    H.nzmax = sizeof(H_x) / sizeof(H_x[0]);
+    H.p = const_cast<int *>(H_p);
+    H.i = const_cast<int *>(H_i);
+    H.x = const_cast<double *>(H_x);
+    H.stype = 0;
+    H.xtype = 1;
+    H.sorted = 1;
+    H.packed = 1;
 
-int main(int argc, char *argv[]){
-    if (argc < 2) {
-        std::cout << "usage: " << argv[0] << " <qp_smp.yml>\n";
-        return 1;
-    }
-    std::string fname = argv[1];
-    QPProblem qp;
-    bool ok = parse_qp_yaml(fname, qp);
-    if (!ok) {
-        std::cerr << "parse failed\n";
-        return 2;
-    }
-    std::cout << "parsed n=" << qp.n << ", me=" << qp.me << ", mi=" << qp.mi << "\n";
+    A.nrow = me;
+    A.ncol = n;
+    A.nzmax = sizeof(A_x) / sizeof(A_x[0]);
+    A.p = const_cast<int *>(A_p);
+    A.i = const_cast<int *>(A_i);
+    A.x = const_cast<double *>(A_x);
+    A.stype = 0;
+    A.xtype = 1;
+    A.sorted = 1;
+    A.packed = 1;
 
-    print_qp_debug(qp);
+    C.nrow = mi;
+    C.ncol = n;
+    C.nzmax = sizeof(C_x) / sizeof(C_x[0]);
+    C.p = const_cast<int *>(C_p);
+    C.i = const_cast<int *>(C_i);
+    C.x = const_cast<double *>(C_x);
+    C.stype = 0;
+    C.xtype = 1;
+    C.sorted = 1;
+    C.packed = 1;
 
-    if (!qp.H || !qp.q) {
-        std::cerr << "Error: Hessian or q is null\n";
-        return false;
-    }
-    // If me>0, we expect qp.A, qp.b not null
-    // If mi>0, we expect qp.C, and at least one bound pointer (e.g. qp.u)
+    double *q_in = const_cast<double *>(q);
+    double *a_eq = const_cast<double *>(b);
+    double *b_ineq = const_cast<double *>(u);
 
-    // 2) Prepare arguments for the Nasoq constructor.
-    //    We assume 'C x <= u' is your ineq form, and 'A x = b' is eq.
+    CSC *B_mat = &C;
+    double *b_used = b_ineq;
 
-    // The Hessian part
-    size_t H_size  = qp.n;
-    int   *Hp      = qp.H->p;
-    int   *Hi      = qp.H->i;
-    double *Hx     = qp.H->x;
-    double *q_in   = qp.q;
-
-    // The equality constraints
-    size_t A_size1 = qp.me;  // #rows = me
-    size_t A_size2 = qp.n;   // #cols = n
-    int   *Ap      = (qp.A) ? qp.A->p : nullptr;
-    int   *Ai      = (qp.A) ? qp.A->i : nullptr;
-    double *Ax     = (qp.A) ? qp.A->x : nullptr;
-    double *a_eq   = qp.b;   // pointer to eq RHS (length me)
-
-    // Default: single-sided approach if only "u" is given
-    size_t B_size1 = qp.mi;
-    size_t B_size2 = qp.n;
-    int   *Bp      = (qp.C) ? qp.C->p : nullptr;
-    int   *Bi      = (qp.C) ? qp.C->i : nullptr;
-    double *Bx     = (qp.C) ? qp.C->x : nullptr;
-    double *b_ineq = qp.u;
-
-    nasoq::CSC *stC = nullptr;
-    double *stb = nullptr;
-
-    // If we have both l and u (two-sided ineq), we build a stacked matrix
-    if(qp.l && qp.u && qp.mi > 0 && qp.C){
-        stC = build_stacked_constraint(qp.C, qp.l, qp.u, qp.mi, qp.n, stb);
-        if(!stC || !stb){
-            std::cerr << "Error creating stacked ineq constraints\n";
-            return 4;
-        }
-        B_size1 = 2 * qp.mi;
-        B_size2 = qp.n;
-        Bp = stC->p;
-        Bi = stC->i;
-        Bx = stC->x;
-        b_ineq = stb;
+    CSC *stackedC = nullptr;
+    double *stacked_b = nullptr;
+    if (l && u) {
+        stackedC = build_stacked_constraint(&C, l, u, mi, n, stacked_b);
+        B_mat = stackedC;
+        b_used = stacked_b;
     }
 
-    // 3) Construct Nasoq
-    nasoq::Nasoq *qm = new nasoq::Nasoq(
-            H_size, Hp, Hi, Hx, q_in,
-            A_size1, A_size2, Ap, Ai, Ax, a_eq,
-            B_size1, B_size2, Bp, Bi, Bx, b_ineq
+    Nasoq *solver = new Nasoq(
+            n, H.p, H.i, H.x, q_in,
+            me, n, A.p, A.i, A.x, a_eq,
+            B_mat->nrow, B_mat->ncol, B_mat->p, B_mat->i, B_mat->x, b_used
     );
- qm->diag_perturb=pow(10,-9);
- qm->eps_abs=pow(10,-3);
- qm->max_iter = 100;
- qm->variant = nasoq::PREDET;
- int converged = qm->solve();
 
- /// Printing results
- if(converged)
-  std::cout<<"The problem is converged:" << converged << std::endl;
+    solver->diag_perturb = 1e-9;
+    solver->eps_abs = 1e-3;
+    solver->max_iter = 100;
+    solver->variant = PREDET;
 
- std::cout << "cons_sat_norm: " << qm->cons_sat_norm << std::endl;
- std::cout << "lag_res: " << qm->lag_res << std::endl;
- std::cout << "non_negativity_infn: " << qm->non_negativity_infn << std::endl;
- std::cout << "complementarity_infn: " << qm->complementarity_infn << std::endl;
- std::cout << "eps_abs: " << qm->eps_abs << std::endl;
+    int status = solver->solve();
 
- // expected x={0.4,1.2};
- auto *x = qm->primal_vars;
- std::cout<<"Primal variables: ";
- for (int i = 0; i < H_size; ++i) {
-  std::cout<<x[i]<<",";
- }
+    std::cout << "Converged: " << status << "\n";
+    std::cout << "cons_sat_norm: " << solver->cons_sat_norm << "\n";
+    std::cout << "lag_res: " << solver->lag_res << "\n";
+    std::cout << "non_negativity_infn: " << solver->non_negativity_infn << "\n";
+    std::cout << "complementarity_infn: " << solver->complementarity_infn << "\n";
 
- std::cout << std::endl;
+    std::cout << "Primal: ";
+    for (int i = 0; i < n; i++) std::cout << solver->primal_vars[i] << " ";
+    std::cout << "\n";
 
- // expected z = {1.6,0,0,0}
- std::cout<<"\nDual variables: ";
- auto *z = qm->dual_vars;
- for (int i = 0; i < A_size1; ++i) {
-  std::cout<<z[i]<<",";
- }
+    std::ofstream csv("results.csv", std::ios::app);
+    csv << "static_qp,"
+        << solver->eps_abs << ","
+        << status << ","
+        << solver->cons_sat_norm << ","
+        << solver->lag_res << ","
+        << solver->non_negativity_infn << ","
+        << solver->complementarity_infn << ","
+        << solver->num_iter << "\n";
+    csv.close();
 
- std::cout << std::endl;
-
-    // === CSV File Handling ===
-    std::ofstream csv_file;
-    std::string csv_filename = "results.csv";
-    bool file_exists = std::ifstream(csv_filename).good(); // Check if file exists
-
-    csv_file.open(csv_filename, std::ios::app); // Open in append mode
-
-    // Write header if the file is newly created
-    if (!file_exists) {
-        csv_file << "Test Case,eps_abs,Convergence,cons_sat_norm,lag_res,non_negativity_infn,complementarity_infn,Iterations\n";
+    delete solver;
+    if (stackedC) {
+        delete[] stackedC->p;
+        delete[] stackedC->i;
+        delete[] stackedC->x;
+        delete stackedC;
     }
+    delete[] stacked_b;
 
-    // Append results
-    csv_file << fname << ","
-             << qm->eps_abs << ","
-             << converged << ","
-             << qm->cons_sat_norm << ","
-             << qm->lag_res << ","
-             << qm->non_negativity_infn << ","
-             << qm->complementarity_infn << ","
-             << qm->num_iter << "\n";
-
-    csv_file.close();
-
-
-    delete qm;
-    delete [] Hp;
-    delete [] Hi;
-    delete [] Hx;
-
-    // Clean up stacked or not
-    if(stC){
-        delete [] stC->p;
-        delete [] stC->i;
-        delete [] stC->x;
-        delete stC;
-    }
-    if(stb){
-        delete [] stb;
-    }
     return 0;
 }
-
