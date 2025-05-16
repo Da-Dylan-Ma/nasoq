@@ -4,6 +4,11 @@ project(nasoq CXX C)
 
 #----------------------------[ global configuration ]--------------------------#
 
+# Check for incompatible options
+if(NASOQ_EMBEDDED AND NASOQ_USE_CLAPACK)
+    message(FATAL_ERROR "NASOQ_EMBEDDED and NASOQ_USE_CLAPACK cannot be used together. Please disable one of these options.")
+endif()
+
 set(CMAKE_CXX_STANDARD 11)
 
 get_directory_property(HAS_PARENT PARENT_DIRECTORY)
@@ -35,6 +40,7 @@ option(NASOQ_WITH_EIGEN "Build NASOQ Eigen interface" ON)
 option(NASOQ_USE_CLAPACK "Use CLAPACK as the LAPACK implementaiton" OFF)
 option(NASOQ_USE_OPENMP "Use OpenMP" ON)
 option(NASOQ_WITH_MATLAB "Build NASOQ Matlab interface" OFF)
+option(NASOQ_EMBEDDED "Build NASOQ for embedded platforms" OFF)
 
 set(NASOQ_BLAS_BACKEND "MKL" CACHE STRING "BLAS implementation for NASOQ to use")
 set_property(CACHE NASOQ_BLAS_BACKEND PROPERTY STRINGS MKL OpenBLAS)
@@ -67,26 +73,27 @@ if(NASOQ_WITH_EIGEN)
     include(eigen)
 endif()
 
+if(NOT NASOQ_EMBEDDED)
+    if(NASOQ_USE_BLAS_MKL)
+        include(mkl)
+    elseif(NASOQ_USE_BLAS_OpenBLAS)
+        if(NASOQ_USE_CLAPACK)
+            set(openblas_WITHOUT_LAPACK ON)
+        endif()
 
-if(NASOQ_USE_BLAS_MKL)
-    include(mkl)
-elseif(NASOQ_USE_BLAS_OpenBLAS)
+        include(openblas)
+
+        if(openblas_WITHOUT_LAPACK AND NOT NASOQ_USE_CLAPACK)
+            message(FATAL_ERROR "cannot build LAPACKE for use with OpenBLAS (maybe you don't have a Fortran compiler?) try setting `NASOQ_USE_CLAPACK` to `ON` to use a C-language alternative.")
+        endif()
+    endif()
+
     if(NASOQ_USE_CLAPACK)
-        set(openblas_WITHOUT_LAPACK ON)
+        # This is outside of the `NASOQ_USE_BLAS_OpenBLAS` block since there is
+        # unit test that compares MLK-LAPACKE to NASOQ's LAPACKE-style wrappers
+        # around a couple of LAPACKE functions.
+        include(clapack)
     endif()
-
-    include(openblas)
-
-    if(openblas_WITHOUT_LAPACK AND NOT NASOQ_USE_CLAPACK)
-        message(FATAL_ERROR "cannot build LAPACKE for use with OpenBLAS (maybe you don't have a Fortran compiler?) try setting `NASOQ_USE_CLAPACK` to `ON` to use a C-language alternative.")
-    endif()
-endif()
-
-if(NASOQ_USE_CLAPACK)
-    # This is outside of the `NASOQ_USE_BLAS_OpenBLAS` block since there is
-    # unit test that compares MLK-LAPACKE to NASOQ's LAPACKE-style wrappers
-    # around a couple of LAPACKE functions.
-    include(clapack)
 endif()
 
 include(metis)
@@ -105,6 +112,15 @@ set(NASOQ_INTERNAL_INCLUDE_DIRS
 )
 
 add_library(nasoq "")
+
+if(NASOQ_EMBEDDED)
+    target_sources(nasoq PRIVATE
+        "src/embedded/blas_replacement.cpp"
+        "src/embedded/lapack_replacement.cpp"
+        "src/embedded/custom_blas.cpp"
+    )
+    target_compile_definitions(nasoq PUBLIC "NASOQ_EMBEDDED")
+endif()
 
 target_sources(nasoq PRIVATE
     "src/nasoq.cpp"
@@ -163,27 +179,33 @@ if(OpenMP_FOUND)
     target_link_libraries(nasoq PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
+# Now handle CLAPACK sources but not linking in embedded mode
 if(NASOQ_USE_CLAPACK)
-    target_sources(nasoq PRIVATE
-        "src/clapacke/clapacke_dlapmt.cpp"
-        "src/clapacke/clapacke_dsytrf.cpp"
-    )
-    target_compile_definitions(nasoq PUBLIC "NASOQ_USE_CLAPACK")
-    target_link_libraries(nasoq PRIVATE clapack::clapack)
+    if(NASOQ_EMBEDDED)
+        message(WARNING "NASOQ_USE_CLAPACK is set but will be ignored in embedded mode")
+    else()
+        target_sources(nasoq PRIVATE
+            "src/clapacke/clapacke_dlapmt.cpp"
+            "src/clapacke/clapacke_dsytrf.cpp"
+        )
+        target_compile_definitions(nasoq PUBLIC "NASOQ_USE_CLAPACK")
+        target_link_libraries(nasoq PRIVATE clapack::clapack)
+    endif()
 endif()
-
 
 target_include_directories(nasoq PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(nasoq PRIVATE ${NASOQ_INTERNAL_INCLUDE_DIRS})
 target_compile_definitions(nasoq PRIVATE "SYM_REMOV")
 target_link_libraries(nasoq PRIVATE metis::metis)
 
-if(NASOQ_USE_BLAS_MKL)
-    target_link_libraries(nasoq PRIVATE mkl::mkl)
-    target_compile_definitions(nasoq PRIVATE "MKL_BLAS")
-elseif(NASOQ_USE_BLAS_OpenBLAS)
-    target_link_libraries(nasoq PRIVATE OpenBLAS::OpenBLAS)
-    target_compile_definitions(nasoq PRIVATE "OPENBLAS")
+if(NOT NASOQ_EMBEDDED)
+  if(NASOQ_USE_BLAS_MKL)
+      target_link_libraries(nasoq PRIVATE mkl::mkl)
+      target_compile_definitions(nasoq PRIVATE "MKL_BLAS")
+  elseif(NASOQ_USE_BLAS_OpenBLAS)
+      target_link_libraries(nasoq PRIVATE OpenBLAS::OpenBLAS)
+      target_compile_definitions(nasoq PRIVATE "OPENBLAS")
+  endif()
 endif()
 
 if(NASOQ_WITH_EIGEN)

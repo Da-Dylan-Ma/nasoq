@@ -9,8 +9,11 @@
 #include <vector>
 #include <cstdlib>
 #include "nasoq/common/Reach.h"
+#include "nasoq/embedded/config.h"
 
-#ifdef OPENBLAS
+#ifdef NASOQ_EMBEDDED
+// No external BLAS/LAPACK headers needed in embedded mode
+#elif defined(OPENBLAS)
 /*    #ifdef OB_INTERNAL
     #include "lapacke.h"
     #include "cblas.h"
@@ -29,6 +32,7 @@
 #include <mkl_blas.h>
 #include <mkl_lapacke.h>
 #endif
+
 namespace nasoq {
 #  define VEC_SCAL(n, a, x, u){               \
     int i; double *pt,*p=(x);                    \
@@ -36,6 +40,8 @@ namespace nasoq {
       *((p)++)*= (a);                           \
   }
 
+#ifndef NASOQ_EMBEDDED
+// Only define these macros if we're not in embedded mode
 #ifdef OPENBLAS
 #define SYM_DGEMM dgemm_
 #define SYM_DTRSM dtrsm_
@@ -47,9 +53,9 @@ namespace nasoq {
 #define SYM_DTRSM dtrsm
 #define SYM_DGEMV dgemv
 #define SYM_DSCAL dscal
-
 #define SET_BLAS_THREAD(t) (MKL_Domain_Set_Num_Threads(t, MKL_DOMAIN_BLAS))
 #endif
+#endif // ifndef NASOQ_EMBEDDED
 
 
  void

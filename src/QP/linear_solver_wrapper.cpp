@@ -215,6 +215,9 @@ namespace nasoq {
 #elif defined(OPENBLAS)
   num_thread = openblas_get_num_procs();
   openblas_set_num_threads(1);
+#elif defined(NASOQ_EMBEDDED)
+  num_thread = 1;
+  // No thread control needed for embedded implementation
 #else
 #error couldn't determine BLAS implementation
 #endif

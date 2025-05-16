@@ -45,3 +45,40 @@ done
 
 
 echo "Check $OUT  for outputs."
+
+echo "USAGE: ./buildAll.sh [test, test-all, mkl, openblas, noblas, with-clapack, clean, clean-all, debug, embedded]"
+echo "    test: run a simple test program using default configuration"
+echo "    test-all: run test programs on all solvers"
+echo "    mkl: use Intel MKL BLAS"
+echo "    openblas: use OpenBLAS"
+echo "    noblas: don't link any BLAS implementation"
+echo "    with-clapack: use CLAPACK implementation for LAPACK functions rather than LAPACKE."
+echo "       This is useful when OpenBLAS with LAPACKE isn't available."
+echo "    clean: clean project"
+echo "    clean-all: clean project and third party libraries"
+echo "    debug: Debug build"
+echo "    embedded: Enable embedded mode for bare-metal ARM targets"
+
+case $1 in
+    
+    mkl)
+        cmake "$CMAKE_ARGS" -DNASOQ_BLAS_BACKEND="MKL" ..
+    ;;
+
+    openblas)
+        cmake "$CMAKE_ARGS" -DNASOQ_BLAS_BACKEND="OpenBLAS" ..
+    ;;
+
+    noblas)
+        cmake "$CMAKE_ARGS" -DNASOQ_INCLUDE_BLAS_AND_LAPACK="OFF" ..
+    ;;
+
+    with-clapack)
+        cmake "$CMAKE_ARGS" -DNASOQ_USE_CLAPACK="ON" ..
+    ;;
+
+    embedded)
+        cmake "$CMAKE_ARGS" -DNASOQ_EMBEDDED="ON" ..
+    ;;
+
+esac
