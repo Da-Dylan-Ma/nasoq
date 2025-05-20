@@ -1,0 +1,335 @@
+\documentclass{beamer}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\usetheme{Madrid}
+\usecolortheme{whale}
+
+\title{Hybrid Active-Projection Method for Embedded QP Solving}
+\author{NASOQ-MPC Project}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+    \tableofcontents
+\end{frame}
+
+\section{Problem Formulation}
+
+\begin{frame}{Quadratic Programming (QP) Problem}
+    Standard form QP:
+    \begin{align}
+        \min_x \quad & \frac{1}{2}x^T H x + q^T x \\
+        \text{s.t.} \quad & Ax = b \\
+        & Bx \leq d
+    \end{align}
+    
+    \begin{itemize}
+        \item $H \in \mathbb{R}^{n \times n}$ (symmetric positive definite)
+        \item $q \in \mathbb{R}^n$
+        \item $A \in \mathbb{R}^{m_e \times n}$ (equality constraints)
+        \item $B \in \mathbb{R}^{m_i \times n}$ (inequality constraints)
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Traditional Active-Set Methods}
+    \begin{itemize}
+        \item Maintain a set of active constraints: $\mathcal{A}(x) = \{i : B_i x = d_i\}$
+        \item Iteratively update active set until optimality conditions are satisfied
+        \item Each iteration:
+            \begin{itemize}
+                \item Solve equality-constrained QP with active constraints
+                \item Add/remove one constraint at a time
+                \item Compute step direction and length
+                \item Update solution
+            \end{itemize}
+        \item Convergence is guaranteed but can be slow for large problems with many constraints
+    \end{itemize}
+\end{frame}
+
+\section{Batch Constraint Processing}
+
+\begin{frame}{Batch Processing of Constraints}
+    \begin{itemize}
+        \item \textbf{Traditional approach:} Add/remove one constraint at a time
+        \item \textbf{Our approach:} Process multiple constraints in each iteration
+    \end{itemize}
+    
+    \begin{theorem}[Batch Update]
+        Given a feasible point $x_k$ and a set of violated constraints $\mathcal{V}_k$, we can compute a feasible step $\alpha_k d_k$ such that multiple constraints in $\mathcal{V}_k$ become active.
+    \end{theorem}
+\end{frame}
+
+\begin{frame}{Batch Selection Algorithm}
+    \begin{algorithm}[H]
+        \caption{Batch Constraint Selection}
+        \begin{algorithmic}[1]
+            \STATE Compute violations: $v_i = B_i x_k - d_i$ for all $i \notin \mathcal{A}_k$
+            \STATE Select batch $\mathcal{B}_k \subset \{i \notin \mathcal{A}_k : v_i > \text{tolerance}\}$
+            \STATE Sort $\mathcal{B}_k$ by violation magnitude (decreasing)
+            \STATE Keep top $b$ constraints in $\mathcal{B}_k$ (where $b$ is batch size)
+        \end{algorithmic}
+    \end{algorithm}
+    
+    \begin{itemize}
+        \item \textbf{Theoretical Advantage:} Reduces the number of KKT systems to solve
+        \item \textbf{Convergence:} Adding multiple constraints can lead to faster convergence
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Optimal Step Length for Batch}
+    For a batch $\mathcal{B}_k$ of constraints:
+    
+    \begin{align}
+        \alpha_k = \min_{i \in \mathcal{B}_k} \frac{d_i - B_i x_k}{B_i d_k}
+    \end{align}
+    
+    where $d_k$ is the search direction, and we only consider $i$ where $B_i d_k > 0$.
+    
+    \begin{theorem}[Batch Step Optimality]
+        The optimal step length $\alpha_k$ ensures that at least one constraint in the batch becomes active without violating any constraint. With multiple constraining constraints, multiple constraints can become active in a single step.
+    \end{theorem}
+\end{frame}
+
+\section{Matrix-Free KKT Solving}
+
+\begin{frame}{KKT System for QP}
+    At each iteration, we solve the KKT system:
+    
+    \begin{align}
+        \begin{bmatrix}
+            H & A^T & B_{\mathcal{A}}^T \\
+            A & 0 & 0 \\
+            B_{\mathcal{A}} & 0 & 0
+        \end{bmatrix}
+        \begin{bmatrix}
+            d_k \\
+            \lambda_e \\
+            \lambda_i
+        \end{bmatrix} =
+        \begin{bmatrix}
+            -\nabla f(x_k) \\
+            0 \\
+            0
+        \end{bmatrix}
+    \end{align}
+    
+    \begin{itemize}
+        \item $B_{\mathcal{A}}$ contains rows of $B$ corresponding to active constraints
+        \item $\lambda_e$ and $\lambda_i$ are Lagrange multipliers
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Matrix-Free Approach}
+    \begin{itemize}
+        \item \textbf{Traditional approach:} Form and factorize KKT matrix
+        \item \textbf{Our approach:} Only compute matrix-vector products
+    \end{itemize}
+    
+    \begin{theorem}[Matrix-Free Iteration]
+        Iterative methods like Conjugate Gradient (CG) and MINRES only require matrix-vector products of the form $Kv$ where $K$ is the KKT matrix and $v$ is a vector.
+    \end{theorem}
+\end{frame}
+
+\begin{frame}{Matrix-Vector Products for KKT System}
+    Given a vector $v = \begin{bmatrix} v_1 \\ v_2 \\ v_3 \end{bmatrix}$, the product $Kv$ is:
+    
+    \begin{align}
+        Kv = 
+        \begin{bmatrix}
+            Hv_1 + A^Tv_2 + B_{\mathcal{A}}^Tv_3 \\
+            Av_1 \\
+            B_{\mathcal{A}}v_1
+        \end{bmatrix}
+    \end{align}
+    
+    Each component can be computed efficiently:
+    \begin{itemize}
+        \item $Hv_1$ using sparse matrix-vector product
+        \item $A^Tv_2$ and $B_{\mathcal{A}}^Tv_3$ using sparse transpose operations
+        \item $Av_1$ and $B_{\mathcal{A}}v_1$ using sparse matrix-vector products
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Theoretical Advantages of Matrix-Free Approach}
+    \begin{itemize}
+        \item \textbf{Memory Efficiency:} 
+            \begin{itemize}
+                \item Memory complexity: $O(nnz(H) + nnz(A) + nnz(B))$ vs. $O(nnz(K))$
+                \item KKT matrix can be much denser than original matrices
+            \end{itemize}
+        \item \textbf{Computational Efficiency:}
+            \begin{itemize}
+                \item Avoids expensive factorization: $O(n^3)$ for dense matrices
+                \item Matrix-vector products: $O(nnz)$ operations
+            \end{itemize}
+        \item \textbf{Embedded Systems:}
+            \begin{itemize}
+                \item Predictable memory usage
+                \item Avoids dynamic memory allocation
+                \item Can exploit problem structure
+            \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\section{Constraint Relaxation}
+
+\begin{frame}{Constraint Relaxation Approach}
+    \begin{itemize}
+        \item \textbf{Traditional approach:} Enforce constraints strictly at each iteration
+        \item \textbf{Our approach:} Relax constraints initially, then gradually tighten
+    \end{itemize}
+    
+    Relaxed constraints:
+    \begin{align}
+        Bx \leq d + \gamma^{(k)} \cdot |d|
+    \end{align}
+    
+    where $\gamma^{(k)}$ is the relaxation factor at iteration $k$.
+\end{frame}
+
+\begin{frame}{Relaxation Schedule}
+    Adaptive relaxation schedule:
+    \begin{align}
+        \gamma^{(k+1)} = \max(\gamma^{(k)} \cdot \beta, \gamma_{\min})
+    \end{align}
+    
+    \begin{itemize}
+        \item $\gamma^{(0)}$: Initial relaxation factor (e.g., 0.1)
+        \item $\beta$: Decay rate (e.g., 0.7)
+        \item $\gamma_{\min}$: Minimum relaxation factor (e.g., 0.001)
+    \end{itemize}
+    
+    \begin{theorem}[Constraint Tightening]
+        If $\gamma^{(k)} \to 0$ as $k \to \infty$, then the solution converges to the solution of the original unrelaxed problem.
+    \end{theorem}
+\end{frame}
+
+\begin{frame}{Theoretical Justification}
+    \begin{itemize}
+        \item \textbf{Improved Numerical Stability:}
+            \begin{itemize}
+                \item Avoids infeasible intermediate solutions
+                \item Reduces zigzagging behavior
+            \end{itemize}
+        \item \textbf{Better Convergence Properties:}
+            \begin{itemize}
+                \item Similar to homotopy/continuation methods
+                \item Can escape local minima in non-convex cases
+            \end{itemize}
+        \item \textbf{Faster Active-Set Identification:}
+            \begin{itemize}
+                \item Helps identify truly active constraints at optimality
+                \item Reduces the need to add/remove constraints repeatedly
+            \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{End-to-End Approach}
+    \begin{algorithm}[H]
+        \caption{Hybrid Active-Projection Method}
+        \begin{algorithmic}[1]
+            \STATE Initialize $x_0$, $\mathcal{A}_0 = \emptyset$, $\gamma^{(0)}$
+            \FOR{$k = 0, 1, \ldots$ until convergence}
+                \STATE Apply relaxation: $\tilde{d} = d + \gamma^{(k)} \cdot |d|$
+                \STATE Identify violated constraints batch $\mathcal{B}_k$
+                \IF{$\mathcal{B}_k = \emptyset$}
+                    \IF{$\gamma^{(k)} > \gamma_{\min}$}
+                        \STATE Update $\gamma^{(k+1)} = \max(\gamma^{(k)} \cdot \beta, \gamma_{\min})$
+                        \STATE Continue
+                    \ELSE
+                        \STATE Check feasibility with original constraints
+                        \IF{feasible}
+                            \STATE \textbf{return} $x_k$ (converged)
+                        \ENDIF
+                    \ENDIF
+                \ENDIF
+                \STATE Update active set: $\mathcal{A}_{k+1} = \mathcal{A}_k \cup \mathcal{B}_k$
+                \STATE Solve KKT system matrix-free to get $d_k$
+                \STATE Compute optimal step length $\alpha_k$
+                \STATE Update: $x_{k+1} = x_k + \alpha_k d_k$
+                \STATE Update relaxation: $\gamma^{(k+1)} = \max(\gamma^{(k)} \cdot \beta, \gamma_{\min})$
+            \ENDFOR
+        \end{algorithmic}
+    \end{algorithm}
+\end{frame}
+
+\begin{frame}{Convergence Analysis}
+    \begin{theorem}[Convergence Guarantee]
+        If the original QP is feasible and bounded, the Hybrid Active-Projection Method converges to the optimal solution in a finite number of iterations.
+    \end{theorem}
+    
+    \begin{proof}[Proof Sketch]
+        \begin{itemize}
+            \item Active set can change at most $2^{m_i}$ times
+            \item Constraint relaxation ensures we approach feasibility
+            \item Batch processing maintains descent property
+            \item Matrix-free KKT solving preserves optimality conditions
+        \end{itemize}
+    \end{proof}
+\end{frame}
+
+\begin{frame}{Computational Complexity}
+    \begin{itemize}
+        \item \textbf{Per-iteration complexity:}
+            \begin{itemize}
+                \item Constraint violation check: $O(m_i \cdot nnz(B)/m_i) = O(nnz(B))$
+                \item Batch selection: $O(m_i \log b)$ where $b$ is batch size
+                \item Matrix-free KKT solve: $O(nnz(H) + nnz(A) + nnz(B)) \cdot O(\sqrt{\kappa})$
+                  where $\kappa$ is condition number
+            \end{itemize}
+        \item \textbf{Number of iterations:} $O(m_i/b)$ compared to $O(m_i)$ for standard active-set
+    \end{itemize}
+\end{frame}
+
+\section{Conclusion}
+
+\begin{frame}{Summary}
+    \begin{itemize}
+        \item \textbf{Batch Constraint Processing:}
+            \begin{itemize}
+                \item Process multiple constraints simultaneously
+                \item Reduces number of iterations
+            \end{itemize}
+        \item \textbf{Matrix-Free KKT Solving:}
+            \begin{itemize}
+                \item Avoids explicit KKT matrix formation
+                \item Memory efficient for embedded systems
+            \end{itemize}
+        \item \textbf{Constraint Relaxation:}
+            \begin{itemize}
+                \item Start with relaxed problem, gradually tighten
+                \item Improves numerical stability and convergence
+            \end{itemize}
+    \end{itemize}
+    
+    The combination of these techniques enables efficient QP solving on embedded systems with limited resources.
+\end{frame}
+
+\begin{frame}{Future Work}
+    \begin{itemize}
+        \item Adaptive batch sizing based on problem structure
+        \item Specialized preconditioners for matrix-free KKT solving
+        \item Warm-starting for sequential QP problems (e.g., MPC)
+        \item Fixed-point arithmetic implementation for ultra-embedded systems
+        \item Theoretical guarantees for non-convex problems
+    \end{itemize}
+\end{frame}
+
+\begin{frame}
+    \centering
+    \Huge Thank you!
+    
+    \vspace{1cm}
+    \large Questions?
+\end{frame}
+
+\end{document} 
