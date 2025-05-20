@@ -10,6 +10,19 @@
 #include <cstdlib>
 #include "nasoq/common/Reach.h"
 
+// Debug preprocessor macros
+#ifdef EMBEDDED
+#pragma message("EMBEDDED macro is defined!")
+#else
+#pragma message("EMBEDDED macro is NOT defined!")
+#endif
+
+// Include embedded implementation headers if we're using them
+#ifdef EMBEDDED
+#include "nasoq/embedded/embedded_blas.h"
+#endif
+
+// Include BLAS headers based on the selected backend
 #ifdef OPENBLAS
 /*    #ifdef OB_INTERNAL
     #include "lapacke.h"
@@ -17,18 +30,19 @@
     //#include "common_interface.h"
     #else*/
     //#include "openblas/f77blas.h"
-#ifdef NASOQ_USE_CLAPACK
+  #ifdef NASOQ_USE_CLAPACK
     #include "nasoq/clapacke/clapacke.h"
-#else
+  #else
     #include "openblas/lapacke.h"
-#endif
+  #endif
     #include "openblas/cblas.h"
    // #endif
 #else
-#include "mkl.h"
-#include <mkl_blas.h>
-#include <mkl_lapacke.h>
+    #include "mkl.h"
+    #include <mkl_blas.h>
+    #include <mkl_lapacke.h>
 #endif
+
 namespace nasoq {
 #  define VEC_SCAL(n, a, x, u){               \
     int i; double *pt,*p=(x);                    \
@@ -36,21 +50,41 @@ namespace nasoq {
       *((p)++)*= (a);                           \
   }
 
+// Define the BLAS function macros
 #ifdef OPENBLAS
 #define SYM_DGEMM dgemm_
 #define SYM_DTRSM dtrsm_
 #define SYM_DGEMV dgemv_
-#define SYM_DSCAL dscal_
+#define SYM_DSYR dsyr_
+#define SYM_DCOPY dcopy_
 #define SET_BLAS_THREAD(t) (openblas_set_num_threads(t))
 #else
 #define SYM_DGEMM dgemm
 #define SYM_DTRSM dtrsm
 #define SYM_DGEMV dgemv
-#define SYM_DSCAL dscal
-
+#define SYM_DSYR dsyr
+#define SYM_DCOPY dcopy
 #define SET_BLAS_THREAD(t) (MKL_Domain_Set_Num_Threads(t, MKL_DOMAIN_BLAS))
 #endif
 
+// Override specific functions with embedded versions if EMBEDDED is defined
+#ifdef EMBEDDED
+#undef SYM_DSCAL
+#define SYM_DSCAL nasoq::embedded::dscal
+#undef SYM_DSYR
+#define SYM_DSYR nasoq::embedded::dsyr
+#undef SYM_DCOPY
+#define SYM_DCOPY nasoq::embedded::dcopy
+#endif
+
+// Define SYM_DSCAL if not already defined by the EMBEDDED section
+#ifndef SYM_DSCAL
+#ifdef OPENBLAS
+#define SYM_DSCAL dscal_
+#else
+#define SYM_DSCAL dscal
+#endif
+#endif
 
  void
  sym_sytrf(double *A, int n, const int stride, int *nbpivot,

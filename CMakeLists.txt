@@ -35,11 +35,18 @@ option(NASOQ_WITH_EIGEN "Build NASOQ Eigen interface" ON)
 option(NASOQ_USE_CLAPACK "Use CLAPACK as the LAPACK implementaiton" OFF)
 option(NASOQ_USE_OPENMP "Use OpenMP" ON)
 option(NASOQ_WITH_MATLAB "Build NASOQ Matlab interface" OFF)
+option(NASOQ_USE_EMBEDDED "Use embedded implementations instead of BLAS/LAPACK" OFF)
 
 set(NASOQ_BLAS_BACKEND "MKL" CACHE STRING "BLAS implementation for NASOQ to use")
 set_property(CACHE NASOQ_BLAS_BACKEND PROPERTY STRINGS MKL OpenBLAS)
 
-if(${NASOQ_BLAS_BACKEND} STREQUAL "MKL")
+# Embedded implementation takes precedence over other BLAS backends
+if(NASOQ_USE_EMBEDDED)
+    set(NASOQ_USE_BLAS_MKL OFF)
+    set(NASOQ_USE_BLAS_OpenBLAS ON)  # Keep OpenBLAS enabled
+    set(NASOQ_USE_CLAPACK OFF)
+    message(STATUS "Using embedded BLAS/LAPACK implementations along with OpenBLAS")
+elseif(${NASOQ_BLAS_BACKEND} STREQUAL "MKL")
     set(NASOQ_USE_BLAS_MKL      ON)
     set(NASOQ_USE_BLAS_OpenBLAS OFF)
 elseif(${NASOQ_BLAS_BACKEND} STREQUAL "OpenBLAS")
@@ -172,6 +179,12 @@ if(NASOQ_USE_CLAPACK)
     target_link_libraries(nasoq PRIVATE clapack::clapack)
 endif()
 
+if(NASOQ_USE_EMBEDDED)
+    target_sources(nasoq PRIVATE
+        "src/embedded/embedded_blas.cpp"
+    )
+    target_compile_definitions(nasoq PUBLIC "EMBEDDED")
+endif()
 
 target_include_directories(nasoq PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(nasoq PRIVATE ${NASOQ_INTERNAL_INCLUDE_DIRS})

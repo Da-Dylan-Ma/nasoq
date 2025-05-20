@@ -53,8 +53,11 @@ namespace nasoq {
 //#ifdef OPENBLAS
    //cblas_dscal(tmp_dim, sca_tmp, tmp1, iun);
 //#else
-#ifdef OPENBLAS
-cblas_dscal(tmp_dim,sca_tmp,tmp1,iun);
+#ifdef EMBEDDED
+   // Use embedded implementation
+   nasoq::embedded::dscal(&tmp_dim, &sca_tmp, tmp1, &iun);
+#elif defined(OPENBLAS)
+   cblas_dscal(tmp_dim,sca_tmp,tmp1,iun);
 #else
    SYM_DSCAL(&tmp_dim, &sca_tmp, tmp1, &iun);
 #endif
@@ -69,12 +72,16 @@ cblas_dscal(tmp_dim,sca_tmp,tmp1,iun);
    double *tmp1_stride = tmp1 + stride;
 /*  std::cout<<dimx<<":"<<diag<<":"<<*tmp1<<":"<<iun<<":"<<
   *tmp1_stride<<":"<<stride<<" : \n";*/
-#ifdef OPENBLAS
+#ifdef EMBEDDED
+   // Use embedded implementation for dsyr
+   char uplo = 'L';
+   nasoq::embedded::dsyr(&uplo, &dimx, &diag, tmp1, &iun, tmp1_stride, &stride);
+#elif defined(OPENBLAS)
    blasint  st = stride;
    cblas_dsyr(CblasColMajor, CblasLower, dimx, diag, tmp1, iun, tmp1_stride, st); //  ?syr Performs a rank-1 update of a symmetric matrix.
   // dsyr_("L", &dimx, &diag, tmp1, &iun, tmp1_stride, &st); //  ?syr Performs a rank-1 update of a symmetric matrix.
 #else
-   dsyr("L", &dimx, &diag, tmp1, &iun, tmp1_stride, &stride); //  ?syr Performs a rank-1 update of a symmetric matrix.
+   SYM_DSYR("L", &dimx, &diag, tmp1, &iun, tmp1_stride, &stride); //  ?syr Performs a rank-1 update of a symmetric matrix.
 #endif
 /*  for (int i = 0; i < dimx; ++i) {
    std::cout<<tmp1[i]<<";";
@@ -490,6 +497,10 @@ cblas_dscal(tmp_dim,sca_tmp,tmp1,iun);
  }
 
  void blocked_2by2_solver(int n, double *D, double *rhs, int n_rhs, int lda, int lda_d) {
+#ifdef EMBEDDED
+  // Use embedded implementation
+  nasoq::embedded::blocked_2by2_solver(n, D, rhs, n_rhs, lda, lda_d);
+#else
 #ifdef OPENBLAS
   blasint  iun = 1;
 #else
@@ -526,6 +537,7 @@ cblas_dscal(tmp_dim,sca_tmp,tmp1,iun);
     i++;//skip next col since it is part of 2x2 pivoting.
    }
   }
+#endif
  }
 
  void blocked_2by2_solver_update(int n, double *D, double *rhs, int n_rhs, int lda, int lda_d, int *mask) {
