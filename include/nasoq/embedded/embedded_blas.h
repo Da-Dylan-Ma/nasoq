@@ -1,10 +1,10 @@
 /**
  * @file embedded_blas.h
- * @brief Embedded-friendly implementations of BLAS functions.
- *
- * This file provides implementations of core BLAS functions that can run
- * on embedded systems without external library dependencies. The implementations
- * prioritize correctness and minimal memory usage over performance.
+ * @brief Embedded-friendly implementations of common BLAS routines
+ * 
+ * This file contains implementations of BLAS routines that do not rely on
+ * external libraries. These are useful for embedded platforms where 
+ * standard BLAS libraries may not be available.
  */
 
 #ifndef NASOQ_EMBEDDED_BLAS_H
@@ -14,88 +14,97 @@ namespace nasoq {
 namespace embedded {
 
 /**
- * @brief Scale a vector by a constant.
- *
- * Computes x = alpha * x
- *
- * @param n     Pointer to the number of elements in vector x
- * @param alpha Pointer to the scaling factor
+ * @brief Vector scaling (DSCAL)
+ * 
+ * Computes x = alpha*x where x is a vector
+ * 
+ * @param n     Number of elements in vector x
+ * @param alpha Scaling factor
  * @param x     Vector to be scaled (modified in-place)
- * @param incx  Pointer to the stride between consecutive elements of x
- *
- * @note Equivalent to BLAS dscal function
+ * @param incx  Stride between consecutive elements of x
  */
 void dscal(const int *n, const double *alpha, double *x, const int *incx);
 
 /**
- * @brief Performs a symmetric rank-1 update.
- *
- * Computes A := alpha*x*x' + A, where A is a symmetric matrix.
- * Only the lower or upper triangular part of A is referenced and updated.
- *
- * @param uplo       Pointer to a character indicating whether to update the upper ('U') 
- *                   or lower ('L') triangular part of A
- * @param n          Pointer to the order of matrix A
- * @param alpha      Pointer to the scalar multiplier
- * @param x          Vector of length at least (1 + (n-1)*abs(incx))
- * @param incx       Pointer to the stride between consecutive elements of x
- * @param a          Matrix A, stored as a linear array in column-major order
- * @param lda        Pointer to the leading dimension of A as declared in the calling program
- *
- * @note Equivalent to BLAS dsyr function
+ * @brief Symmetric rank-1 update (DSYR)
+ * 
+ * Performs the symmetric rank-1 update: A = alpha*x*x' + A
+ * 
+ * @param uplo  'L' or 'U' (lower or upper triangular part of A is updated)
+ * @param n     Order of matrix A
+ * @param alpha Scalar multiplier
+ * @param x     Vector x
+ * @param incx  Stride between consecutive elements of x
+ * @param a     Matrix A (modified in-place)
+ * @param lda   Leading dimension of A
  */
 void dsyr(const char *uplo, const int *n, const double *alpha,
           const double *x, const int *incx, double *a, const int *lda);
 
 /**
- * @brief Copies a vector to another vector.
- *
- * Computes y = x
- *
- * @param n     Pointer to the number of elements in vectors x and y
+ * @brief Vector copy (DCOPY)
+ * 
+ * Copies vector x to vector y
+ * 
+ * @param n     Number of elements to copy
  * @param x     Source vector
- * @param incx  Pointer to the stride between consecutive elements of x
+ * @param incx  Stride between consecutive elements of x
  * @param y     Destination vector
- * @param incy  Pointer to the stride between consecutive elements of y
- *
- * @note Equivalent to BLAS dcopy function
+ * @param incy  Stride between consecutive elements of y
  */
-void dcopy(const int *n, const double *x, const int *incx,
+void dcopy(const int *n, const double *x, const int *incx, 
            double *y, const int *incy);
 
 /**
- * @brief Solves a system with a 2x2 block diagonal matrix.
- *
- * This function handles both 1x1 and 2x2 block pivots in the diagonal D.
- * For 1x1 blocks, it simply scales the corresponding row in rhs.
- * For 2x2 blocks, it solves a small linear system using Cramer's rule.
- *
- * @param n     Number of columns in D
- * @param D     The block diagonal matrix
- * @param rhs   Right-hand side matrix (overwritten with solution)
+ * @brief Solver for block-diagonal matrix with 1x1 and 2x2 blocks
+ * 
+ * Solves D*X = B where D is a block diagonal matrix with 1x1 and 2x2 blocks
+ * 
+ * @param n     Order of matrix D
+ * @param D     Block diagonal matrix
+ * @param rhs   Right-hand-side vectors (solution returned here)
  * @param n_rhs Number of right-hand sides
  * @param lda   Leading dimension of rhs
- * @param lda_d Leading dimension of D
- *
- * @note Specialized function used by NASOQ
+ * @param lda_d Stride for subdiagonal elements in D
  */
 void blocked_2by2_solver(int n, double *D, double *rhs, int n_rhs, int lda, int lda_d);
 
 /**
- * @brief Multiplies a 2x2 block diagonal matrix by a matrix.
- *
- * This function multiplies a block diagonal matrix with a source matrix.
- * It handles both 1x1 and 2x2 blocks in the diagonal matrix D.
- *
- * @param n     Number of columns in D
- * @param m     Number of columns in src and dst
- * @param D     The block diagonal matrix
+ * @brief Matrix-vector multiplication (DGEMV)
+ * 
+ * Performs one of the matrix-vector operations:
+ * y = alpha*A*x + beta*y  (trans = 'N' or 'n')
+ * y = alpha*A'*x + beta*y (trans = 'T', 't', 'C', or 'c')
+ * 
+ * @param trans  Specifies operation to perform ('N', 'n', 'T', 't', 'C', 'c')
+ * @param m      Number of rows of matrix A
+ * @param n      Number of columns of matrix A
+ * @param alpha  Scalar multiplier for A*x or A'*x
+ * @param a      Matrix A
+ * @param lda    Leading dimension of A
+ * @param x      Vector x
+ * @param incx   Stride between consecutive elements of x
+ * @param beta   Scalar multiplier for y
+ * @param y      Vector y (modified in-place)
+ * @param incy   Stride between consecutive elements of y
+ */
+void dgemv(const char *trans, const int *m, const int *n,
+           const double *alpha, const double *a, const int *lda,
+           const double *x, const int *incx,
+           const double *beta, double *y, const int *incy);
+
+/**
+ * @brief Multiplication with block-diagonal matrix with 1x1 and 2x2 blocks
+ * 
+ * Computes dst = D*src where D is a block diagonal matrix with 1x1 and 2x2 blocks
+ * 
+ * @param n     Order of matrix D
+ * @param m     Number of columns in src/dst
+ * @param D     Block diagonal matrix
  * @param src   Source matrix
- * @param dst   Destination matrix (output of the multiplication)
- * @param lda   Leading dimension of src and dst
- * @param lda_d Leading dimension of D
- *
- * @note Specialized function used by NASOQ
+ * @param dst   Destination matrix (result)
+ * @param lda   Leading dimension of src
+ * @param lda_d Stride for subdiagonal elements in D
  */
 void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int lda, int lda_d);
 

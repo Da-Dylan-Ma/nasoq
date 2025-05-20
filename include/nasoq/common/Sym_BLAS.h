@@ -75,6 +75,8 @@ namespace nasoq {
 #define SYM_DSYR nasoq::embedded::dsyr
 #undef SYM_DCOPY
 #define SYM_DCOPY nasoq::embedded::dcopy
+#undef SYM_DGEMV
+#define SYM_DGEMV nasoq::embedded::dgemv
 #endif
 
 // Define SYM_DSCAL if not already defined by the EMBEDDED section
@@ -155,7 +157,12 @@ namespace nasoq {
  * diagonal matrix is symmetric
  */
 
+#ifdef EMBEDDED
+void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst,
+                        int lda, int lda_d);
+#else
  void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst,
                         int lda, int lda_d);
+#endif
 }
 #endif //PROJECT_BLASKERNELS_H

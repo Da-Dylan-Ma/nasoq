@@ -583,6 +583,10 @@ namespace nasoq {
  }
 
  void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int lda, int lda_d) {
+#ifdef EMBEDDED
+  // Use embedded implementation
+  nasoq::embedded::blocked_2by2_mult(n, m, D, src, dst, lda, lda_d);
+#else
   int iun = 1;
   for (int l = 0; l < n;) {
    if (D[l + lda_d] == 0) { // simple scaling
@@ -608,5 +612,6 @@ namespace nasoq {
     l += 2;
    }
   }
+#endif
  }
 }
