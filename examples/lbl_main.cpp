@@ -1,11 +1,170 @@
 //
 // Created by kazem on 8/15/20.
 //
-
 #include <nasoq/QP/linear_solver_wrapper.h>
 #include <cstdio>
 #include <iostream>
 #include <cmath>
+#include <cstring>
+#include <vector>
+#include <fstream>
+
+#include "yaml_qp_parser.h"
+#include "../smp-format/io.h"
+
+// Debugging function
+template <typename T>
+void print_array(const std::string& name, const T* array, size_t size) {
+    std::cout << name << ": [";
+    for (size_t i = 0; i < size; ++i) {
+        std::cout << array[i];
+        if (i < size - 1) {
+            std::cout << ", ";
+        }
+    }
+    std::cout << "]" << std::endl;
+}
+
+void transpose_unsym(const nasoq::CSC *A, nasoq::CSC *&B) {
+    if (!A) return;  // no-op if A is null
+
+    int m = A->nrow;
+    int n = A->ncol;
+
+    B = new nasoq::CSC;
+    B->nrow = n;
+    B->ncol = m;
+    B->stype = 0;
+    B->xtype = A->xtype;
+    B->sorted = 1;
+    B->packed = 1;
+    B->nz = A->nz;
+    B->nzmax = A->nzmax;
+
+    B->p = new int[B->ncol + 1];
+    std::memset(B->p, 0, (B->ncol + 1) * sizeof(int));
+
+    B->i = new int[B->nzmax];
+    if (A->x) {
+        B->x = new double[B->nzmax];
+    } else {
+        B->x = nullptr;
+    }
+
+    for (int colA = 0; colA < n; colA++) {
+        for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
+            int rowA = A->i[pA];
+            B->p[rowA + 1]++;
+        }
+    }
+
+    for (int colB = 0; colB < B->ncol; colB++) {
+        B->p[colB + 1] += B->p[colB];
+    }
+
+    std::vector<int> nextPos(B->ncol);
+    for (int colB = 0; colB < B->ncol; colB++) {
+        nextPos[colB] = B->p[colB];
+    }
+
+    for (int colA = 0; colA < n; colA++) {
+        for (int pA = A->p[colA]; pA < A->p[colA + 1]; pA++) {
+            int rowA = A->i[pA];
+            int destPos = nextPos[rowA]++;
+            B->i[destPos] = colA;
+            if (B->x) {
+                B->x[destPos] = A->x[pA];
+            }
+        }
+    }
+}
+
+static void print_qp_debug(const QPProblem &qp) {
+    // Hessian H
+    if (qp.H) {
+        std::cout << "H: " << qp.H->nrow << " x " << qp.H->ncol
+                  << " nnz=" << qp.H->nzmax << "\n";
+        int show_cols = std::min((int) qp.H->ncol, 5);
+        for (int col = 0; col < show_cols; col++) {
+            int start = qp.H->p[col];
+            int end = qp.H->p[col + 1];
+            for (int idx = start; idx < end; idx++) {
+                int row = qp.H->i[idx];
+                if (row < 5) {
+                    double val = qp.H->x[idx];
+                    std::cout << "  H(" << row << "," << col << ")=" << val << "\n";
+                }
+            }
+        }
+    }
+
+    // linear q
+    if (qp.q) {
+        std::cout << "q: [";
+        int show_q = std::min(qp.n, 5);
+        for (int i = 0; i < show_q; i++) {
+            std::cout << qp.q[i] << " ";
+        }
+        std::cout << ((qp.n > 5) ? "...]\n" : "]\n");
+    }
+
+    // equality constraints A, b
+    if (qp.A) {
+        std::cout << "A: " << qp.A->nrow << " x " << qp.A->ncol
+                  << " nnz=" << qp.A->nzmax << "\n";
+        int show_cols = std::min((int) qp.A->ncol, 5);
+        for (int col = 0; col < show_cols; col++) {
+            int start = qp.A->p[col];
+            int end = qp.A->p[col + 1];
+            for (int idx = start; idx < end; idx++) {
+                int row = qp.A->i[idx];
+                if (row < 5) {
+                    double val = qp.A->x[idx];
+                    std::cout << "  A(" << row << "," << col << ")=" << val << "\n";
+                }
+            }
+        }
+    }
+    if (qp.b) {
+        std::cout << "b: [";
+        int show_b = std::min(qp.me, 5);
+        for (int i = 0; i < show_b; i++) {
+            std::cout << qp.b[i] << " ";
+        }
+        std::cout << ((qp.me > 5) ? "...]\n" : "]\n");
+    }
+
+    // inequality constraints C, l, u
+    if (qp.C) {
+        std::cout << "C: " << qp.C->nrow << " x " << qp.C->ncol
+                  << " nnz=" << qp.C->nzmax << "\n";
+        int show_cols = std::min((int) qp.C->ncol, 5);
+        for (int col = 0; col < show_cols; col++) {
+            int start = qp.C->p[col];
+            int end = qp.C->p[col + 1];
+            for (int idx = start; idx < end; idx++) {
+                int row = qp.C->i[idx];
+                if (row < 5) {
+                    double val = qp.C->x[idx];
+                    std::cout << "  C(" << row << "," << col << ")=" << val << "\n";
+                }
+            }
+        }
+    }
+    if (qp.l && qp.u) {
+        int show_ineq = std::min(qp.mi, 5);
+        std::cout << "l: [";
+        for (int i = 0; i < show_ineq; i++) {
+            std::cout << qp.l[i] << " ";
+        }
+        std::cout << ((qp.mi > 5) ? "...]\n" : "]\n");
+        std::cout << "u: [";
+        for (int i = 0; i < show_ineq; i++) {
+            std::cout << qp.u[i] << " ";
+        }
+        std::cout << ((qp.mi > 5) ? "...]\n" : "]\n");
+    }
+}
 
 /*
  * Solving Hx = q
@@ -13,60 +172,90 @@
  * q is a dense array
  */
 
-int main(int argc, char *argv[]){
- /// Declaring input matrices
- size_t sizeH;
- size_t nnzH;
- sizeH = 2;
- nnzH = 2;
- auto *q = new double[sizeH];
- auto *Hp = new int[sizeH+1];
- auto *Hi = new int[nnzH];
- auto *Hx = new double[nnzH];
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        std::cout << "usage: " << argv[0] << " <qp_smp.yml>\n";
+        return 1;
+    }
+    std::string fname = argv[1];
+    QPProblem qp;
+    bool ok = parse_qp_yaml(fname, qp);
+    if (!ok) {
+        std::cerr << "parse failed\n";
+        return 2;
+    }
+    std::cout << "parsed n=" << qp.n << ", me=" << qp.me << ", mi=" << qp.mi << "\n";
 
- q[0] = -4; q[1] = -4;
+    print_qp_debug(qp);
 
- Hp[0]=0;Hp[1]=1;Hp[2]=2;
- Hi[0]=0;Hi[1]=1;
- Hx[0]=2;Hx[1]=2;
+//    // 2) Transpose A
+//    nasoq::CSC *AT = nullptr;
+//    transpose_unsym(qp.A, AT);
+//
+//    // 3) Transpose C
+//    nasoq::CSC *CT = nullptr;
+//    transpose_unsym(qp.C, CT);
 
- auto *H = new nasoq::CSC; H->nzmax = nnzH; H->ncol= H->nrow =sizeH;
- H->p = Hp; H->i = Hi; H->x = Hx; H->stype=-1; H->packed=1;
-/// Solving the linear system
- auto *lbl = new nasoq::SolverSettings(H,q);
- lbl->ldl_variant = 2; // set it to 4 if your C++ compiler supports openmp
- lbl->req_ref_iter = 2;
- lbl->solver_mode = 0;
- lbl->reg_diag = pow(10,-9);
- lbl->symbolic_analysis();
- lbl->numerical_factorization();
- double *x = lbl->solve_only();
+    /// Solving the linear system
+    auto *lbl = new nasoq::SolverSettings(qp.H, qp.q, qp.A, qp.b);
+    lbl->ldl_variant = 1; // set it to 4 if your C++ compiler supports openmp
+    lbl->req_ref_iter = 2;
+    lbl->solver_mode = 1;
+    lbl->reg_diag = pow(10, -9);
 
- /// Printing results
- // expected x={-2,-2};
- std::cout<<"Solution: ";
- for (int i = 0; i < sizeH; ++i) {
-  std::cout<<x[i]<<",";
- }
+    std::cout << "Before symbolic analysis\n";
+    lbl->symbolic_analysis();
+    std::cout << "After symbolic analysis\n";
 
- /// Solving new RHS for the same factor
- auto *new_q = new double[sizeH];
- new_q[0] = 8; new_q[1] = 8;
- lbl->solve_only(1, new_q);
- /// Printing results
- // expected x={4,4};
- std::cout<<"Solution: ";
- for (int i = 0; i < sizeH; ++i) {
-  std::cout<<x[i]<<",";
- }
+    lbl->numerical_factorization();
+    std::cout << "After numerical factorization\n";
 
- delete lbl;
- delete []Hp;
- delete []Hi;
- delete []Hx;
- delete []q;
- delete []x;
- delete []new_q;
- delete H;
- return 0;
+    double *x = lbl->solve_only();
+    std::cout << "After solve_only\n";
+
+    /// Printing results
+    // expected x={-2,-2};
+    std::cout << "Solution: ";
+    // for (int i = 0; i < sizeH; ++i) {
+    //  std::cout << x[i] << ",";
+    // }
+
+    std::cout << "GMRES / iterative refinement steps: " << lbl->num_ref_iter << "\n";
+
+    // 2) Print raw timing info
+    if (lbl->psi) {
+        lbl->psi->print_profiling();
+    }
+
+    lbl->compute_norms(); // compute norms of A, x, b, Ax-b
+    double be = lbl->backward_error();
+    std::cout << "Backward error = " << be << std::endl;
+
+    if (lbl->L) {
+        std::cout << "Number of supernodes: " << lbl->L->nsuper << std::endl;
+    }
+
+    // Debugging export of supermatrix
+    std::ofstream outfile("supermatrix.mtx");
+    if (outfile.is_open()) {
+        std::cout << "Matrix dimensions: " << lbl->SM->nrow << " x " << lbl->SM->ncol << std::endl;
+
+        // Print the contents of the Ap array
+//        print_array("Ap", lbl->SM->p, lbl->SM->ncol + 1);
+
+        size_t nnz = lbl->SM->ncol > 0 ? lbl->SM->p[lbl->SM->ncol] : 0;
+        std::cout << "Number of non-zeros (nnz): " << nnz << std::endl;
+
+        format::print_csc(lbl->SM->nrow, lbl->SM->ncol, lbl->SM->p, lbl->SM->i, lbl->SM->x, outfile.rdbuf());
+        outfile.close();
+        std::cout << "Supermatrix exported to supermatrix.mtx\n";
+    } else {
+        std::cerr << "Error opening file for writing: supermatrix.mtx\n";
+    }
+
+//    delete AT;
+//    delete CT;
+    delete lbl;
+
+    return 0;
 }

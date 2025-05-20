@@ -1,75 +1,145 @@
-
-#include <cmath>
 #include <iostream>
+#include <fstream>
+#include <cmath>
 #include <nasoq/nasoq.h>
+#include "../codegen/qp_data_static.h"
 
-/*
- * Minimizing 1/2 x^THx + q^Tx + C; Cx <= d
- * H and C are sparse CSC matrices
- * q and d are dense arrays
- */
+using namespace nasoq;
+using namespace qp_data;
 
-int main(int argc, char *argv[]){
- /// Declaring inputs
- size_t sizeH;
- size_t nnzH;
- size_t CRows; size_t CCols; size_t nnzA;
- sizeH = 2; nnzH = 2;
- CRows = 4; CCols = 2; nnzA = 8;
- auto *q = new double[sizeH];
- auto *Hp = new int[sizeH+1];
- auto *Hi = new int[nnzH];
- auto *Hx = new double[nnzH];
- auto *Cp = new int[CCols+1];
- auto *Ci = new int[nnzA];
- auto *Cx = new double[nnzA];
- auto *d = new double[CRows];
+CSC *build_stacked_constraint(const CSC *C, const double *l, const double *u, int mi, int n, double *&stacked_b) {
+    CSC *stackedC = new CSC;
+    stackedC->nrow = 2 * mi;
+    stackedC->ncol = n;
+    stackedC->nzmax = 2 * C->p[n];
+    stackedC->p = new int[n + 1];
+    stackedC->i = new int[stackedC->nzmax];
+    stackedC->x = new double[stackedC->nzmax];
+    stackedC->stype = 0;
+    stackedC->xtype = 1;
+    stackedC->sorted = 1;
+    stackedC->packed = 1;
 
- q[0] = -4; q[1] = -4;
+    stackedC->p[0] = 0;
+    int nnz = 0;
+    for (int j = 0; j < n; j++) {
+        int start = C->p[j], end = C->p[j + 1];
+        for (int k = start; k < end; k++) {
+            stackedC->i[nnz] = C->i[k];
+            stackedC->x[nnz] = C->x[k];
+            nnz++;
+        }
+        for (int k = start; k < end; k++) {
+            stackedC->i[nnz] = C->i[k] + mi;
+            stackedC->x[nnz] = -C->x[k];
+            nnz++;
+        }
+        stackedC->p[j + 1] = nnz;
+    }
 
- Hp[0]=0;Hp[1]=1;Hp[2]=2;
- Hi[0]=0;Hi[1]=1;
- Hx[0]=2;Hx[1]=2;
-
- Cp[0]=0;Cp[1]=4;Cp[2]=8;
- Ci[0]=0;Ci[1]=1;Ci[2]=2;Ci[3]=3;
- Ci[4]=0;Ci[5]=1;Ci[6]=2;Ci[7]=3;
- Cx[0]=2;Cx[1]=1;Cx[2]=-1;Cx[3]=-2;
- Cx[4]=1;Cx[5]=-1;Cx[6]=-1;Cx[7]=1;
-
- d[0]=2;d[1]=1;d[2]=1;d[3]=2;
-
- /// Solving the QP pronlem
- nasoq::Nasoq *qm;
- qm = new nasoq::Nasoq(sizeH,Hp,Hi,Hx,
-                       q,CRows,CCols,Cp, Ci, Cx, d);
- qm->diag_perturb=pow(10,-9);
- qm->eps_abs=pow(10,-3);
- qm->max_iter = 0;
- qm->variant = nasoq::PREDET;
- int converged = qm->solve();
-
- /// Printing results
- if(converged)
-  std::cout<<"The problem is converged\n";
-
- // expected x={0.4,1.2};
- auto *x = qm->primal_vars;
- std::cout<<"Primal variables: ";
- for (int i = 0; i < sizeH; ++i) {
-  std::cout<<x[i]<<",";
- }
-
- // expected z = {1.6,0,0,0}
- std::cout<<"\nDual variables: ";
- auto *z = qm->dual_vars;
- for (int i = 0; i < CRows; ++i) {
-  std::cout<<z[i]<<",";
- }
-
- delete qm;
- delete []Hp; delete []Hi; delete []Hx; delete []q;
- delete []Cp;  delete []Ci; delete []Cx; delete []d;
- return 0;
+    stacked_b = new double[2 * mi];
+    for (int i = 0; i < mi; i++) {
+        stacked_b[i] = u[i];
+        stacked_b[i + mi] = -l[i];
+    }
+    return stackedC;
 }
 
+int main() {
+    size_t n = sizeof(H_p) / sizeof(H_p[0]) - 1;
+    size_t me = sizeof(b) / sizeof(b[0]);
+    size_t mi = sizeof(u) / sizeof(u[0]);
+
+    CSC H, A, C;
+    H.nrow = H.ncol = n;
+    H.nzmax = sizeof(H_x) / sizeof(H_x[0]);
+    H.p = const_cast<int *>(H_p);
+    H.i = const_cast<int *>(H_i);
+    H.x = const_cast<double *>(H_x);
+    H.stype = 0;
+    H.xtype = 1;
+    H.sorted = 1;
+    H.packed = 1;
+
+    A.nrow = me;
+    A.ncol = n;
+    A.nzmax = sizeof(A_x) / sizeof(A_x[0]);
+    A.p = const_cast<int *>(A_p);
+    A.i = const_cast<int *>(A_i);
+    A.x = const_cast<double *>(A_x);
+    A.stype = 0;
+    A.xtype = 1;
+    A.sorted = 1;
+    A.packed = 1;
+
+    C.nrow = mi;
+    C.ncol = n;
+    C.nzmax = sizeof(C_x) / sizeof(C_x[0]);
+    C.p = const_cast<int *>(C_p);
+    C.i = const_cast<int *>(C_i);
+    C.x = const_cast<double *>(C_x);
+    C.stype = 0;
+    C.xtype = 1;
+    C.sorted = 1;
+    C.packed = 1;
+
+    double *q_in = const_cast<double *>(q);
+    double *a_eq = const_cast<double *>(b);
+    double *b_ineq = const_cast<double *>(u);
+
+    CSC *B_mat = &C;
+    double *b_used = b_ineq;
+
+    CSC *stackedC = nullptr;
+    double *stacked_b = nullptr;
+    if (l && u) {
+        stackedC = build_stacked_constraint(&C, l, u, mi, n, stacked_b);
+        B_mat = stackedC;
+        b_used = stacked_b;
+    }
+
+    Nasoq *solver = new Nasoq(
+            n, H.p, H.i, H.x, q_in,
+            me, n, A.p, A.i, A.x, a_eq,
+            B_mat->nrow, B_mat->ncol, B_mat->p, B_mat->i, B_mat->x, b_used
+    );
+
+    solver->diag_perturb = 1e-9;
+    solver->eps_abs = 1e-3;
+    solver->max_iter = 100;
+    solver->variant = PREDET;
+
+    int status = solver->solve();
+
+    std::cout << "Converged: " << status << "\n";
+    std::cout << "cons_sat_norm: " << solver->cons_sat_norm << "\n";
+    std::cout << "lag_res: " << solver->lag_res << "\n";
+    std::cout << "non_negativity_infn: " << solver->non_negativity_infn << "\n";
+    std::cout << "complementarity_infn: " << solver->complementarity_infn << "\n";
+
+    std::cout << "Primal: ";
+    for (int i = 0; i < n; i++) std::cout << solver->primal_vars[i] << " ";
+    std::cout << "\n";
+
+    std::ofstream csv("results.csv", std::ios::app);
+    csv << "static_qp,"
+        << solver->eps_abs << ","
+        << status << ","
+        << solver->cons_sat_norm << ","
+        << solver->lag_res << ","
+        << solver->non_negativity_infn << ","
+        << solver->complementarity_infn << ","
+        << solver->num_iter << "\n";
+    csv.close();
+
+    delete solver;
+    if (stackedC) {
+        delete[] stackedC->p;
+        delete[] stackedC->i;
+        delete[] stackedC->x;
+        delete stackedC;
+    }
+    delete[] stacked_b;
+
+    return 0;
+}
