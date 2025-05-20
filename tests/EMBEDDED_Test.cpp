@@ -162,4 +162,174 @@ TEST_CASE("Direct test of embedded BLAS implementation", "[embedded]") {
         REQUIRE(dst[2] == Approx(9.0));
         REQUIRE(dst[3] == Approx(17.0));
     }
+    
+    // Test dgemm function
+    SECTION("Test dgemm (no transpose)") {
+        const int m = 2; // Rows of C and A
+        const int n = 3; // Columns of C and B
+        const int k = 2; // Columns of A, rows of B
+        
+        // Matrix A (column-major): [1 3; 2 4]
+        double a[4] = {1.0, 2.0, 3.0, 4.0};
+        
+        // Matrix B (column-major): [1 3 5; 2 4 6]
+        double b[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        
+        // Matrix C (column-major, will be overwritten): [1 4 7; 2 5 8]
+        double c[6] = {1.0, 2.0, 4.0, 5.0, 7.0, 8.0};
+        
+        double alpha = 1.0;
+        double beta = 0.0; // C will be completely overwritten
+        
+        char transa = 'N';
+        char transb = 'N';
+        
+        int lda = 2;
+        int ldb = 2;
+        int ldc = 2;
+
+        std::cout << "Testing embedded dgemm (no transpose) directly..." << std::endl;
+        
+        // Call our embedded implementation
+        nasoq::embedded::dgemm(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        
+        // Expected result: C = A*B
+        // [1 3]   [1 3 5]   [7  15  23]
+        // [2 4] * [2 4 6] = [10 22  34]
+        
+        // Check results
+        REQUIRE(c[0] == Approx(7.0));  // c[0,0]
+        REQUIRE(c[1] == Approx(10.0)); // c[1,0]
+        REQUIRE(c[2] == Approx(15.0)); // c[0,1]
+        REQUIRE(c[3] == Approx(22.0)); // c[1,1]
+        REQUIRE(c[4] == Approx(23.0)); // c[0,2]
+        REQUIRE(c[5] == Approx(34.0)); // c[1,2]
+    }
+    
+    SECTION("Test dgemm (with transpose A)") {
+        const int m = 2; // Rows of C and op(A)
+        const int n = 2; // Columns of C and op(B)
+        const int k = 3; // Columns of op(A), rows of op(B)
+        
+        // Matrix A (column-major): [1 4; 2 5; 3 6] (3x2)
+        // A' = [1 2 3; 4 5 6] (2x3)
+        double a[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        
+        // Matrix B (column-major): [2 5; 3 6; 4 7] (3x2)
+        double b[6] = {2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+        
+        // Matrix C (column-major, will be overwritten)
+        double c[4] = {1.0, 2.0, 3.0, 4.0};
+        
+        double alpha = 2.0;
+        double beta = 0.5; // C will be scaled and added to
+        
+        char transa = 'T'; // Transpose A
+        char transb = 'N'; // No transpose B
+        
+        int lda = 3; // Leading dimension of A before transpose
+        int ldb = 3; // Leading dimension of B
+        int ldc = 2; // Leading dimension of C
+
+        std::cout << "Testing embedded dgemm (with transpose A) directly..." << std::endl;
+        
+        // Call our embedded implementation
+        nasoq::embedded::dgemm(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        
+        // Expected result: C = 2*A'*B + 0.5*C
+        // C = 2*[1 2 3; 4 5 6]*[2 5; 3 6; 4 7] + 0.5*[1 3; 2 4]
+        // C = 2*[20 41; 47 98] + [0.5 1.5; 1.0 2.0]
+        // C = [40.5 83.5; 95.0 198.0]
+        
+        // Check results
+        REQUIRE(c[0] == Approx(40.5));  // c[0,0]
+        REQUIRE(c[1] == Approx(95.0));  // c[1,0]
+        REQUIRE(c[2] == Approx(83.5));  // c[0,1]
+        REQUIRE(c[3] == Approx(198.0)); // c[1,1]
+    }
+    
+    // Test dtrsm function
+    SECTION("Test dtrsm (lower triangular)") {
+        const int m = 2; // Rows of B
+        const int n = 2; // Columns of B
+        
+        // Lower triangular matrix A (column-major): [2 0; 1 3]
+        double a[4] = {2.0, 1.0, 0.0, 3.0};
+        
+        // Matrix B (column-major, will be overwritten): [6 18; 5 25]
+        double b[4] = {6.0, 5.0, 18.0, 25.0};
+        
+        double alpha = 1.0;
+        
+        char side = 'L'; // op(A) on left of X
+        char uplo = 'L'; // A is lower triangular
+        char transa = 'N'; // No transpose
+        char diag = 'N'; // Not unit triangular
+        
+        int lda = 2; // Leading dimension of A
+        int ldb = 2; // Leading dimension of B
+
+        std::cout << "Testing embedded dtrsm (lower triangular) directly..." << std::endl;
+        
+        // Call our embedded implementation
+        nasoq::embedded::dtrsm(&side, &uplo, &transa, &diag, &m, &n, &alpha, a, &lda, b, &ldb);
+        
+        // Expected result: X where A*X = B
+        // To solve manually:
+        // [2 0] * [x11 x12] = [6  18]
+        // [1 3]   [x21 x22]   [5  25]
+        //
+        // 2*x11 = 6 => x11 = 3
+        // 1*x11 + 3*x21 = 5 => 3*x21 = 5-3 => x21 = 2/3
+        // 2*x12 = 18 => x12 = 9
+        // 1*x12 + 3*x22 = 25 => 3*x22 = 25-9 => x22 = 16/3
+        
+        // Check results
+        REQUIRE(b[0] == Approx(3.0));    // x11
+        REQUIRE(b[1] == Approx(2.0/3.0)); // x21
+        REQUIRE(b[2] == Approx(9.0));    // x12
+        REQUIRE(b[3] == Approx(16.0/3.0)); // x22
+    }
+    
+    SECTION("Test dtrsm (upper triangular)") {
+        const int m = 2; // Rows of B
+        const int n = 2; // Columns of B
+        
+        // Upper triangular matrix A (column-major): [2 1; 0 3]
+        double a[4] = {2.0, 0.0, 1.0, 3.0};
+        
+        // Matrix B (column-major, will be overwritten): [12 24; 3 18]
+        double b[4] = {12.0, 3.0, 24.0, 18.0};
+        
+        double alpha = 1.0;
+        
+        char side = 'L'; // op(A) on left of X
+        char uplo = 'U'; // A is upper triangular
+        char transa = 'N'; // No transpose
+        char diag = 'N'; // Not unit triangular
+        
+        int lda = 2; // Leading dimension of A
+        int ldb = 2; // Leading dimension of B
+
+        std::cout << "Testing embedded dtrsm (upper triangular) directly..." << std::endl;
+        
+        // Call our embedded implementation
+        nasoq::embedded::dtrsm(&side, &uplo, &transa, &diag, &m, &n, &alpha, a, &lda, b, &ldb);
+        
+        // Expected result: X where A*X = B
+        // To solve manually:
+        // [2 1] * [x11 x12] = [12 24]
+        // [0 3]   [x21 x22]   [3  18]
+        //
+        // 3*x21 = 3 => x21 = 1
+        // 3*x22 = 18 => x22 = 6
+        // 2*x11 + 1*x21 = 12 => 2*x11 = 12-1 => x11 = 5.5
+        // 2*x12 + 1*x22 = 24 => 2*x12 = 24-6 => x12 = 9
+        
+        // Check results
+        REQUIRE(b[0] == Approx(5.5)); // x11
+        REQUIRE(b[1] == Approx(1.0)); // x21
+        REQUIRE(b[2] == Approx(9.0)); // x12
+        REQUIRE(b[3] == Approx(6.0)); // x22
+    }
 } 

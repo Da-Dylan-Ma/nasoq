@@ -77,6 +77,10 @@ namespace nasoq {
 #define SYM_DCOPY nasoq::embedded::dcopy
 #undef SYM_DGEMV
 #define SYM_DGEMV nasoq::embedded::dgemv
+#undef SYM_DGEMM
+#define SYM_DGEMM nasoq::embedded::dgemm
+#undef SYM_DTRSM
+#define SYM_DTRSM nasoq::embedded::dtrsm
 #endif
 
 // Define SYM_DSCAL if not already defined by the EMBEDDED section

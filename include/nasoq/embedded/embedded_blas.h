@@ -108,6 +108,58 @@ void dgemv(const char *trans, const int *m, const int *n,
  */
 void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int lda, int lda_d);
 
+/**
+ * @brief Matrix-matrix multiplication (DGEMM)
+ * 
+ * Performs one of the matrix-matrix operations:
+ * C = alpha*A*B + beta*C  (transA='N', transB='N')
+ * C = alpha*A'*B + beta*C (transA='T', transB='N')
+ * C = alpha*A*B' + beta*C (transA='N', transB='T')
+ * C = alpha*A'*B' + beta*C (transA='T', transB='T')
+ * 
+ * @param transa Specifies if A should be transposed ('N', 'n', 'T', 't', 'C', 'c')
+ * @param transb Specifies if B should be transposed ('N', 'n', 'T', 't', 'C', 'c')
+ * @param m      Number of rows of matrix C and op(A)
+ * @param n      Number of columns of matrix C and op(B)
+ * @param k      Number of columns of op(A) and rows of op(B)
+ * @param alpha  Scalar multiplier for op(A)*op(B)
+ * @param a      Matrix A
+ * @param lda    Leading dimension of A
+ * @param b      Matrix B
+ * @param ldb    Leading dimension of B
+ * @param beta   Scalar multiplier for C
+ * @param c      Matrix C (modified in-place)
+ * @param ldc    Leading dimension of C
+ */
+void dgemm(const char *transa, const char *transb, const int *m, const int *n, const int *k,
+           const double *alpha, const double *a, const int *lda, const double *b, const int *ldb,
+           const double *beta, double *c, const int *ldc);
+
+/**
+ * @brief Triangular matrix solve with multiple right-hand sides (DTRSM)
+ * 
+ * Solves one of the matrix equations:
+ * op(A)*X = alpha*B (side='L' or 'l')
+ * X*op(A) = alpha*B (side='R' or 'r')
+ * 
+ * where op(A) = A or A', A is a triangular matrix, and X and B are m-by-n matrices.
+ * 
+ * @param side   Specifies whether op(A) is on the left or right of X ('L', 'l', 'R', 'r')
+ * @param uplo   Specifies whether A is upper or lower triangular ('U', 'u', 'L', 'l')
+ * @param transa Specifies whether to use A or A' ('N', 'n', 'T', 't', 'C', 'c')
+ * @param diag   Specifies whether A is unit triangular ('U', 'u', 'N', 'n')
+ * @param m      Number of rows of matrix B
+ * @param n      Number of columns of matrix B
+ * @param alpha  Scalar multiplier for B
+ * @param a      Triangular matrix A
+ * @param lda    Leading dimension of A
+ * @param b      Matrix B on entry, matrix X on exit
+ * @param ldb    Leading dimension of B
+ */
+void dtrsm(const char *side, const char *uplo, const char *transa, const char *diag,
+           const int *m, const int *n, const double *alpha,
+           const double *a, const int *lda, double *b, const int *ldb);
+
 } // namespace embedded
 } // namespace nasoq
 

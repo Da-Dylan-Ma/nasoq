@@ -322,5 +322,343 @@ void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int ld
     }
 }
 
+void dgemm(const char *transa, const char *transb, const int *m, const int *n, const int *k,
+           const double *alpha, const double *a, const int *lda, const double *b, const int *ldb,
+           const double *beta, double *c, const int *ldc) {
+    std::cout << "\n\n**************************************************************" << std::endl;
+    std::cout << "*** [EMBEDDED] Using embedded dgemm implementation (m=" << *m << ", n=" << *n 
+              << ", k=" << *k << ", transa='" << *transa << "', transb='" << *transb 
+              << "', alpha=" << *alpha << ", beta=" << *beta << ") ***" << std::endl;
+    std::cout << "**************************************************************\n\n" << std::flush;
+    
+    // Check for special cases where we can return early
+    if (*m <= 0 || *n <= 0 || *k <= 0) {
+        return;
+    }
+    
+    if (*alpha == 0.0 && *beta == 1.0) {
+        return; // No operation needed: C = C
+    }
+    
+    // Determine operation types based on transA and transB flags
+    bool trans_a = (*transa == 'T' || *transa == 't' || *transa == 'C' || *transa == 'c');
+    bool trans_b = (*transb == 'T' || *transb == 't' || *transb == 'C' || *transb == 'c');
+    
+    // Scale C by beta
+    if (*beta != 1.0) {
+        if (*beta == 0.0) {
+            // Special case: beta = 0, just zero out C
+            for (int j = 0; j < *n; j++) {
+                for (int i = 0; i < *m; i++) {
+                    c[i + j * (*ldc)] = 0.0;
+                }
+            }
+        } else {
+            // General case: scale C by beta
+            for (int j = 0; j < *n; j++) {
+                for (int i = 0; i < *m; i++) {
+                    c[i + j * (*ldc)] *= *beta;
+                }
+            }
+        }
+    }
+    
+    // If alpha == 0, we can return after scaling C by beta
+    if (*alpha == 0.0) {
+        return;
+    }
+    
+    // Handle all four cases based on transA and transB
+    if (!trans_a && !trans_b) {
+        // C = alpha*A*B + beta*C
+        for (int j = 0; j < *n; j++) {
+            for (int l = 0; l < *k; l++) {
+                double temp = *alpha * b[l + j * (*ldb)];
+                for (int i = 0; i < *m; i++) {
+                    c[i + j * (*ldc)] += a[i + l * (*lda)] * temp;
+                }
+            }
+        }
+    } else if (trans_a && !trans_b) {
+        // C = alpha*A'*B + beta*C
+        for (int j = 0; j < *n; j++) {
+            for (int i = 0; i < *m; i++) {
+                double temp = 0.0;
+                for (int l = 0; l < *k; l++) {
+                    temp += a[l + i * (*lda)] * b[l + j * (*ldb)];
+                }
+                c[i + j * (*ldc)] += *alpha * temp;
+            }
+        }
+    } else if (!trans_a && trans_b) {
+        // C = alpha*A*B' + beta*C
+        for (int j = 0; j < *n; j++) {
+            for (int i = 0; i < *m; i++) {
+                double temp = 0.0;
+                for (int l = 0; l < *k; l++) {
+                    temp += a[i + l * (*lda)] * b[j + l * (*ldb)];
+                }
+                c[i + j * (*ldc)] += *alpha * temp;
+            }
+        }
+    } else { // trans_a && trans_b
+        // C = alpha*A'*B' + beta*C
+        for (int j = 0; j < *n; j++) {
+            for (int i = 0; i < *m; i++) {
+                double temp = 0.0;
+                for (int l = 0; l < *k; l++) {
+                    temp += a[l + i * (*lda)] * b[j + l * (*ldb)];
+                }
+                c[i + j * (*ldc)] += *alpha * temp;
+            }
+        }
+    }
+}
+
+void dtrsm(const char *side, const char *uplo, const char *transa, const char *diag,
+           const int *m, const int *n, const double *alpha,
+           const double *a, const int *lda, double *b, const int *ldb) {
+    std::cout << "\n\n**************************************************************" << std::endl;
+    std::cout << "*** [EMBEDDED] Using embedded dtrsm implementation (m=" << *m << ", n=" << *n 
+              << ", side='" << *side << "', uplo='" << *uplo << "', transa='" << *transa 
+              << "', diag='" << *diag << "', alpha=" << *alpha << ") ***" << std::endl;
+    std::cout << "**************************************************************\n\n" << std::flush;
+    
+    // Check for special cases
+    if (*m <= 0 || *n <= 0) {
+        return;
+    }
+    
+    if (*alpha == 0.0) {
+        // If alpha is zero, set B to zero and return
+        for (int j = 0; j < *n; j++) {
+            for (int i = 0; i < *m; i++) {
+                b[i + j * (*ldb)] = 0.0;
+            }
+        }
+        return;
+    }
+    
+    // Determine operation parameters
+    bool left_side = (*side == 'L' || *side == 'l');
+    bool upper = (*uplo == 'U' || *uplo == 'u');
+    bool trans_a = (*transa == 'T' || *transa == 't' || *transa == 'C' || *transa == 'c');
+    bool unit_diag = (*diag == 'U' || *diag == 'u');
+    
+    // Scale B by alpha if alpha != 1.0
+    if (*alpha != 1.0) {
+        for (int j = 0; j < *n; j++) {
+            for (int i = 0; i < *m; i++) {
+                b[i + j * (*ldb)] *= *alpha;
+            }
+        }
+    }
+    
+    // Handle the different operation cases
+    if (left_side) {
+        // op(A) * X = B, solve for X (overwriting B)
+        if (!trans_a) {
+            // A * X = B
+            if (upper) {
+                // A is upper triangular
+                for (int j = 0; j < *n; j++) {
+                    // Process each column of B
+                    for (int k = *m - 1; k >= 0; k--) {
+                        // Skip division by zero diagonal elements
+                        if (!unit_diag && a[k + k * (*lda)] == 0.0) {
+                            // Division by zero - not handling here, could set to inf/nan or error
+                            continue;
+                        }
+                        
+                        // Divide by diagonal element (unless unit diagonal)
+                        if (!unit_diag) {
+                            b[k + j * (*ldb)] /= a[k + k * (*lda)];
+                        }
+                        
+                        // Update other elements in this column
+                        double temp = b[k + j * (*ldb)];
+                        for (int i = 0; i < k; i++) {
+                            b[i + j * (*ldb)] -= temp * a[i + k * (*lda)];
+                        }
+                    }
+                }
+            } else {
+                // A is lower triangular
+                for (int j = 0; j < *n; j++) {
+                    // Process each column of B
+                    for (int k = 0; k < *m; k++) {
+                        // Skip division by zero diagonal elements
+                        if (!unit_diag && a[k + k * (*lda)] == 0.0) {
+                            // Division by zero - not handling here, could set to inf/nan or error
+                            continue;
+                        }
+                        
+                        // Divide by diagonal element (unless unit diagonal)
+                        if (!unit_diag) {
+                            b[k + j * (*ldb)] /= a[k + k * (*lda)];
+                        }
+                        
+                        // Update remaining elements in this column
+                        double temp = b[k + j * (*ldb)];
+                        for (int i = k + 1; i < *m; i++) {
+                            b[i + j * (*ldb)] -= temp * a[i + k * (*lda)];
+                        }
+                    }
+                }
+            }
+        } else {
+            // A' * X = B
+            if (upper) {
+                // A is upper triangular, so A' is lower triangular
+                for (int j = 0; j < *n; j++) {
+                    // Process each column of B
+                    for (int k = 0; k < *m; k++) {
+                        // First compute the dot product of preceding rows of A' with X
+                        double temp = b[k + j * (*ldb)];
+                        for (int i = 0; i < k; i++) {
+                            temp -= a[i + k * (*lda)] * b[i + j * (*ldb)];
+                        }
+                        
+                        // Then divide by diagonal (unless unit diagonal)
+                        if (!unit_diag) {
+                            if (a[k + k * (*lda)] == 0.0) {
+                                // Division by zero - not handling here
+                                continue;
+                            }
+                            temp /= a[k + k * (*lda)];
+                        }
+                        
+                        b[k + j * (*ldb)] = temp;
+                    }
+                }
+            } else {
+                // A is lower triangular, so A' is upper triangular
+                for (int j = 0; j < *n; j++) {
+                    // Process each column of B
+                    for (int k = *m - 1; k >= 0; k--) {
+                        // First compute the dot product of preceding rows of A' with X
+                        double temp = b[k + j * (*ldb)];
+                        for (int i = k + 1; i < *m; i++) {
+                            temp -= a[i + k * (*lda)] * b[i + j * (*ldb)];
+                        }
+                        
+                        // Then divide by diagonal (unless unit diagonal)
+                        if (!unit_diag) {
+                            if (a[k + k * (*lda)] == 0.0) {
+                                // Division by zero - not handling here
+                                continue;
+                            }
+                            temp /= a[k + k * (*lda)];
+                        }
+                        
+                        b[k + j * (*ldb)] = temp;
+                    }
+                }
+            }
+        }
+    } else {
+        // X * op(A) = B, solve for X (overwriting B)
+        if (!trans_a) {
+            // X * A = B
+            if (upper) {
+                // A is upper triangular
+                for (int j = 0; j < *n; j++) {
+                    // Skip division by zero diagonal elements
+                    if (!unit_diag && a[j + j * (*lda)] == 0.0) {
+                        // Division by zero - not handling here
+                        continue;
+                    }
+                    
+                    // Divide by diagonal element (unless unit diagonal)
+                    if (!unit_diag) {
+                        for (int i = 0; i < *m; i++) {
+                            b[i + j * (*ldb)] /= a[j + j * (*lda)];
+                        }
+                    }
+                    
+                    // Update other columns
+                    for (int k = j + 1; k < *n; k++) {
+                        double temp = a[j + k * (*lda)];
+                        for (int i = 0; i < *m; i++) {
+                            b[i + k * (*ldb)] -= b[i + j * (*ldb)] * temp;
+                        }
+                    }
+                }
+            } else {
+                // A is lower triangular
+                for (int j = *n - 1; j >= 0; j--) {
+                    // Skip division by zero diagonal elements
+                    if (!unit_diag && a[j + j * (*lda)] == 0.0) {
+                        // Division by zero - not handling here
+                        continue;
+                    }
+                    
+                    // Divide by diagonal element (unless unit diagonal)
+                    if (!unit_diag) {
+                        for (int i = 0; i < *m; i++) {
+                            b[i + j * (*ldb)] /= a[j + j * (*lda)];
+                        }
+                    }
+                    
+                    // Update other columns
+                    for (int k = 0; k < j; k++) {
+                        double temp = a[j + k * (*lda)];
+                        for (int i = 0; i < *m; i++) {
+                            b[i + k * (*ldb)] -= b[i + j * (*ldb)] * temp;
+                        }
+                    }
+                }
+            }
+        } else {
+            // X * A' = B
+            if (upper) {
+                // A is upper triangular, so A' is lower triangular
+                for (int j = *n - 1; j >= 0; j--) {
+                    // First compute the effect of preceding columns
+                    for (int i = 0; i < *m; i++) {
+                        double temp = b[i + j * (*ldb)];
+                        for (int k = 0; k < j; k++) {
+                            temp -= b[i + k * (*ldb)] * a[k + j * (*lda)];
+                        }
+                        
+                        // Then divide by diagonal (unless unit diagonal)
+                        if (!unit_diag) {
+                            if (a[j + j * (*lda)] == 0.0) {
+                                // Division by zero - not handling here
+                                continue;
+                            }
+                            temp /= a[j + j * (*lda)];
+                        }
+                        
+                        b[i + j * (*ldb)] = temp;
+                    }
+                }
+            } else {
+                // A is lower triangular, so A' is upper triangular
+                for (int j = 0; j < *n; j++) {
+                    // First compute the effect of preceding columns
+                    for (int i = 0; i < *m; i++) {
+                        double temp = b[i + j * (*ldb)];
+                        for (int k = j + 1; k < *n; k++) {
+                            temp -= b[i + k * (*ldb)] * a[k + j * (*lda)];
+                        }
+                        
+                        // Then divide by diagonal (unless unit diagonal)
+                        if (!unit_diag) {
+                            if (a[j + j * (*lda)] == 0.0) {
+                                // Division by zero - not handling here
+                                continue;
+                            }
+                            temp /= a[j + j * (*lda)];
+                        }
+                        
+                        b[i + j * (*ldb)] = temp;
+                    }
+                }
+            }
+        }
+    }
+}
+
 } // namespace embedded
 } // namespace nasoq 
