@@ -1019,6 +1019,185 @@ int main() {
         test_assert(info == 0, "LU factorization should succeed with info = 0");
     }
     
+    //====================================================================
+    // Test dsytrf
+    //====================================================================
+    begin_test("dsytrf");
+
+    // Test case 1: Lower triangular format (column-major)
+    {
+        const int n = 3;
+        
+        // Symmetric matrix A in column-major format:
+        // [ 4  0  0 ]
+        // [ 2  5  0 ]
+        // [ 1  3  6 ]
+        double a[9] = {
+            4.0, 2.0, 1.0,  // First column
+            0.0, 5.0, 3.0,  // Second column
+            0.0, 0.0, 6.0   // Third column
+        };
+        
+        int ipiv[3] = {0, 0, 0}; // Pivot indices
+        
+        std::cout << "Original matrix A (lower triangular format):" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        // Call embedded dsytrf
+        int info = nasoq::embedded::dsytrf(LAPACK_COL_MAJOR, 'L', n, a, n, ipiv);
+        
+        std::cout << "After dsytrf:" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Verify factorization result
+        test_assert(info == 0, "DSYTRF factorization should succeed with info = 0");
+        
+        // Extract D and L from the factorized matrix
+        // For L, the diagonal is implicitly 1
+        
+        // Create a copy for verification
+        double l[9] = {0};
+        double d[9] = {0};
+        
+        // Extract L (unit lower triangular) from the factorized matrix
+        l[0] = 1.0; // Diagonal elements are implicitly 1
+        l[4] = 1.0;
+        l[8] = 1.0;
+        
+        l[1] = 0.0; // Upper triangular part is zero
+        l[2] = 0.0;
+        l[5] = 0.0;
+        
+        l[3] = a[1]; // Lower triangular part holds L values
+        l[6] = a[2];
+        l[7] = a[5];
+        
+        // Extract D (block diagonal) based on ipiv
+        // This is a simplified extraction that doesn't fully handle 2x2 blocks
+        d[0] = a[0]; // Diagonal elements hold D values
+        d[4] = a[4];
+        d[8] = a[8];
+        
+        std::cout << "L matrix:" << std::endl;
+        print_matrix(l, n, n, n);
+        
+        std::cout << "D matrix:" << std::endl;
+        print_matrix(d, n, n, n);
+        
+        // Multiply L*D*L^T to reconstruct the original matrix
+        // This is a simplified multiplication for verification
+        double result[9] = {0};
+        
+        // First compute L*D
+        double ld[9] = {0};
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                for (int k = 0; k < n; k++) {
+                    ld[i + j*n] += l[i + k*n] * d[k + j*n];
+                }
+            }
+        }
+        
+        // Then compute (L*D)*L^T
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                for (int k = 0; k < n; k++) {
+                    result[i + j*n] += ld[i + k*n] * l[j + k*n]; // Note: L^T[k,j] = L[j,k]
+                }
+            }
+        }
+        
+        std::cout << "Reconstructed matrix (L*D*L^T):" << std::endl;
+        print_matrix(result, n, n, n);
+        
+        // Verify the reconstruction against the original matrix
+        test_assert(approx_equal(result[0], 4.0), "Reconstructed[0,0] should be 4.0");
+        test_assert(approx_equal(result[1], 2.0), "Reconstructed[1,0] should be 2.0");
+        test_assert(approx_equal(result[2], 1.0), "Reconstructed[2,0] should be 1.0");
+        test_assert(approx_equal(result[3], 2.0), "Reconstructed[0,1] should be 2.0");
+        test_assert(approx_equal(result[4], 5.0), "Reconstructed[1,1] should be 5.0");
+        test_assert(approx_equal(result[5], 3.0), "Reconstructed[2,1] should be 3.0");
+        test_assert(approx_equal(result[6], 1.0), "Reconstructed[0,2] should be 1.0");
+        test_assert(approx_equal(result[7], 3.0), "Reconstructed[1,2] should be 3.0");
+        test_assert(approx_equal(result[8], 6.0), "Reconstructed[2,2] should be 6.0");
+    }
+
+    // Test case 2: Upper triangular format (column-major)
+    {
+        const int n = 3;
+        
+        // Symmetric matrix A in column-major format:
+        // [ 4  2  1 ]
+        // [ 0  5  3 ]
+        // [ 0  0  6 ]
+        double a[9] = {
+            4.0, 0.0, 0.0,  // First column
+            2.0, 5.0, 0.0,  // Second column
+            1.0, 3.0, 6.0   // Third column
+        };
+        
+        int ipiv[3] = {0, 0, 0}; // Pivot indices
+        
+        std::cout << "\nOriginal matrix A (upper triangular format):" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        // Call embedded dsytrf
+        int info = nasoq::embedded::dsytrf(LAPACK_COL_MAJOR, 'U', n, a, n, ipiv);
+        
+        std::cout << "After dsytrf:" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Verify factorization result
+        test_assert(info == 0, "DSYTRF factorization should succeed with info = 0");
+    }
+
+    // Test case 3: Row-major format
+    {
+        const int n = 3;
+        
+        // Symmetric matrix A in row-major format:
+        // [ 4  2  1 ]
+        // [ 2  5  3 ]
+        // [ 1  3  6 ]
+        double a[9] = {
+            4.0, 2.0, 1.0,  // First row
+            2.0, 5.0, 3.0,  // Second row
+            1.0, 3.0, 6.0   // Third row
+        };
+        
+        int ipiv[3] = {0, 0, 0}; // Pivot indices
+        
+        std::cout << "\nOriginal matrix A (row-major format):" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        // Call embedded dsytrf
+        int info = nasoq::embedded::dsytrf(LAPACK_ROW_MAJOR, 'L', n, a, n, ipiv);
+        
+        std::cout << "After dsytrf:" << std::endl;
+        print_matrix(a, n, n, n);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Verify factorization result
+        test_assert(info == 0, "DSYTRF factorization should succeed with info = 0");
+    }
+    
     std::cout << "\nEmbedded BLAS functions test completed." << std::endl;
     std::cout << "=================== TEST SUMMARY ===================" << std::endl;
     

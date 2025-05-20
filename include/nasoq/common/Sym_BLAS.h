@@ -90,6 +90,8 @@ namespace nasoq {
 #define NASOQ_DLAPMT nasoq::embedded::dlapmt
 // Add embedded version of dgetrf
 #define NASOQ_DGETRF nasoq::embedded::dgetrf
+// Add embedded version of dsytrf
+#define NASOQ_DSYTRF nasoq::embedded::dsytrf
 #else
 // Use non-embedded versions (default implementations)
 #define NASOQ_DOT nasoq::dot

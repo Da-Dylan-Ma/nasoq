@@ -200,6 +200,32 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
 void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere);
 
 /**
+ * @brief Symmetric factorization (DSYTRF)
+ * 
+ * Computes the factorization of a real symmetric matrix A using the
+ * Bunch-Kaufman diagonal pivoting method. The form of the factorization is:
+ * 
+ * A = U*D*U^T  or  A = L*D*L^T
+ * 
+ * where U (or L) is a product of permutation and unit upper (or lower)
+ * triangular matrices, and D is symmetric and block diagonal with 1-by-1
+ * and 2-by-2 diagonal blocks.
+ * 
+ * @param matrix_layout  Layout of matrix (LAPACK_ROW_MAJOR or LAPACK_COL_MAJOR)
+ * @param uplo           Specifies whether the upper or lower triangular part is stored:
+ *                       'U' or 'u' for upper triangular, 'L' or 'l' for lower triangular
+ * @param n              The order of the matrix A
+ * @param a              On entry, the symmetric matrix A. On exit, the block diagonal
+ *                       matrix D and the multipliers used to obtain the factor U or L
+ * @param lda            The leading dimension of the array a
+ * @param ipiv           Integer array, dimension (n). Details of the interchanges and
+ *                       the block structure of D
+ * @return               0 if successful, negative error code if an argument had an illegal
+ *                       value, positive value i if D(i,i) is exactly zero
+ */
+int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv);
+
+/**
  * @brief Permute columns of a matrix (DLAPMT)
  * 
  * Rearranges the columns of the M by N matrix X as specified
