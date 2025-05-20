@@ -199,6 +199,25 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
  */
 void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere);
 
+/**
+ * @brief Permute columns of a matrix (DLAPMT)
+ * 
+ * Rearranges the columns of the M by N matrix X as specified
+ * by the permutation K(1),K(2),...,K(N) of the integers 1,...,N.
+ * 
+ * @param matrix_layout  Layout of matrix (LAPACK_ROW_MAJOR or LAPACK_COL_MAJOR)
+ * @param forwrd         If true, forward permutation: X(*,K(J)) is moved to X(*,J)
+ *                       If false, backward permutation: X(*,J) is moved to X(*,K(J))
+ * @param m              Number of rows of matrix X
+ * @param n              Number of columns of matrix X
+ * @param x              Matrix X (modified in-place)
+ * @param ldx            Leading dimension of matrix X
+ * @param k              Permutation vector
+ * @return               0 if successful, negative error code otherwise
+ */
+int dlapmt(int matrix_layout, int forwrd, int m, int n, 
+           double *x, int ldx, int *k);
+
 } // namespace embedded
 } // namespace nasoq
 

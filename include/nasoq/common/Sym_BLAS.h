@@ -86,11 +86,15 @@ namespace nasoq {
 #define NASOQ_SWAP_VECTOR nasoq::embedded::swap_vector
 // Add embedded version of sym_sytrf
 #define SYM_SYTRF nasoq::embedded::sym_sytrf
+// Add embedded version of dlapmt
+#define NASOQ_DLAPMT nasoq::embedded::dlapmt
 #else
 // Use non-embedded versions (default implementations)
 #define NASOQ_DOT nasoq::dot
 #define NASOQ_SWAP_VECTOR nasoq::swap_vector
 #define SYM_SYTRF nasoq::sym_sytrf
+// Use clapacke version for dlapmt when not using embedded
+#define NASOQ_DLAPMT nasoq::clapacke::LAPACKE_dlapmt
 #endif
 
 // Define SYM_DSCAL if not already defined by the EMBEDDED section

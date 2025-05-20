@@ -6,6 +6,7 @@
 #include "nasoq/embedded/embedded_blas.h"
 #include <iostream>
 #include <cassert>
+#include <vector>
 
 namespace nasoq {
 namespace embedded {
@@ -637,6 +638,170 @@ void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere)
         
         char uplo = 'L';
         dsyr(&uplo, &dimx, &diag, tmp1, &iun, tmp1_stride, &stride);
+    }
+}
+
+// Helper functions for dlapmt
+template<typename T>
+inline const T& embedded_minimum(const T& a, const T& b) {
+    return a <= b ? a : b;
+}
+
+template<typename T>
+inline const T& embedded_maximum(const T& a, const T& b) {
+    return a >= b ? a : b;
+}
+
+/**
+ * @brief Permute columns of a matrix (DLAPMT)
+ * 
+ * Embedded implementation that doesn't depend on external LAPACK.
+ */
+int dlapmt(int matrix_layout, int forwrd, int m, int n, 
+           double *x, int ldx, int *k) {
+    
+    std::cout << "\n\n**************************************************************" << std::endl;
+    std::cout << "*** [EMBEDDED] Using embedded dlapmt implementation (m=" << m 
+              << ", n=" << n << ", forwrd=" << (forwrd ? "true" : "false") << ") ***" << std::endl;
+    std::cout << "**************************************************************\n\n" << std::flush;
+    
+    // Constants for matrix layout
+    const int LAPACK_ROW_MAJOR = 101;
+    const int LAPACK_COL_MAJOR = 102;
+    
+    // Function to transpose matrix blocks
+    auto transpose_into = [](double* out_x_t, int ldx_t, const double* x, int ldx, 
+                             int m, int n, int matrix_layout) {
+        int i_max, j_max;
+        if (LAPACK_COL_MAJOR == matrix_layout) {
+            j_max = n;
+            i_max = m;
+        } else {
+            j_max = m;
+            i_max = n;
+        }
+        j_max = embedded_minimum(j_max, ldx_t);
+        i_max = embedded_minimum(i_max, ldx);
+
+        for (int i = 0; i < i_max; ++i) {
+            for (int j = 0; j < j_max; ++j) {
+                out_x_t[i*ldx_t + j] = x[j*ldx + i];
+            }
+        }
+    };
+    
+    // Handle row major layout by transposing to column major, permuting, then transposing back
+    if (LAPACK_ROW_MAJOR == matrix_layout) {
+        int ldx_t = embedded_maximum(1, m);
+        if (ldx < n) return -6;  // Invalid ldx parameter
+        
+        // Create temporary buffer for transposed matrix
+        std::vector<double> x_t(ldx_t * embedded_maximum(1, n));
+        
+        // Transpose input matrix to column major format
+        transpose_into(x_t.data(), ldx_t, x, ldx, m, n, matrix_layout);
+        
+        // Apply column permutation on transposed matrix in column major format
+        int info = dlapmt(LAPACK_COL_MAJOR, forwrd, m, n, x_t.data(), ldx_t, k);
+        if (info < 0) return info;
+        
+        // Transpose result back to row major format
+        transpose_into(x, ldx, x_t.data(), ldx_t, m, n, LAPACK_COL_MAJOR);
+        
+        return 0;
+    } 
+    // For column major layout, apply permutation directly
+    else if (LAPACK_COL_MAJOR == matrix_layout) {
+        if (ldx < m) return -6;  // Invalid ldx parameter
+        
+        // Create temporary space for column swap operations
+        std::vector<double> temp_col(m);
+        std::vector<int> perm(n);
+        
+        // Initialize permutation tracking array
+        for (int i = 0; i < n; i++) {
+            perm[i] = i;
+        }
+        
+        if (forwrd) {
+            // Forward permutation: X(*,K(J)) is moved to X(*,J)
+            for (int j = 0; j < n; j++) {
+                // Skip if column is already in correct position
+                if (perm[j] == j) continue;
+                
+                int curr_col = j;
+                int dest_col = k[j] - 1;  // Convert from 1-indexed to 0-indexed
+                
+                // Save the current column
+                for (int i = 0; i < m; i++) {
+                    temp_col[i] = x[i + curr_col * ldx];
+                }
+                
+                // Move columns in a cyclic fashion until we return to start
+                while (dest_col != j) {
+                    // Move destination column to current position
+                    for (int i = 0; i < m; i++) {
+                        x[i + curr_col * ldx] = x[i + dest_col * ldx];
+                    }
+                    
+                    // Mark this permutation as done
+                    perm[curr_col] = perm[dest_col];
+                    
+                    // Move to next column in cycle
+                    curr_col = dest_col;
+                    dest_col = k[curr_col] - 1;  // Convert from 1-indexed to 0-indexed
+                }
+                
+                // Place saved column in final position
+                for (int i = 0; i < m; i++) {
+                    x[i + curr_col * ldx] = temp_col[i];
+                }
+                
+                // Mark final permutation as done
+                perm[curr_col] = j;
+            }
+        } else {
+            // Backward permutation: X(*,J) is moved to X(*,K(J))
+            for (int j = 0; j < n; j++) {
+                // Skip if column is already in correct position
+                if (perm[j] == j) continue;
+                
+                int curr_col = j;
+                int dest_col = k[j] - 1;  // Convert from 1-indexed to 0-indexed
+                
+                // Save the current column
+                for (int i = 0; i < m; i++) {
+                    temp_col[i] = x[i + curr_col * ldx];
+                }
+                
+                // Move columns in a cyclic fashion until we return to start
+                while (dest_col != j) {
+                    // Move destination column to current position
+                    for (int i = 0; i < m; i++) {
+                        x[i + curr_col * ldx] = x[i + dest_col * ldx];
+                    }
+                    
+                    // Mark this permutation as done
+                    perm[curr_col] = perm[dest_col];
+                    
+                    // Move to next column in cycle
+                    curr_col = dest_col;
+                    dest_col = k[curr_col] - 1;  // Convert from 1-indexed to 0-indexed
+                }
+                
+                // Place saved column in final position
+                for (int i = 0; i < m; i++) {
+                    x[i + curr_col * ldx] = temp_col[i];
+                }
+                
+                // Mark final permutation as done
+                perm[curr_col] = j;
+            }
+        }
+        
+        return 0;
+    } else {
+        return -1;  // Invalid matrix_layout parameter
     }
 }
 

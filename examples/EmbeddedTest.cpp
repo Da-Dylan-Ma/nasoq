@@ -708,6 +708,160 @@ int main() {
     test_assert(approx_equal(reconstructed[7], 1.0), "Reconstructed A[2,1] should be 1.0");
     test_assert(approx_equal(reconstructed[8], 3.0), "Reconstructed A[2,2] should be 3.0");
     
+    //====================================================================
+    // Test dlapmt (column permutation)
+    //====================================================================
+    begin_test("dlapmt");
+    
+    // Define LAPACK_ROW_MAJOR and LAPACK_COL_MAJOR constants to match clapacke.h
+    const int LAPACK_ROW_MAJOR = 101;
+    const int LAPACK_COL_MAJOR = 102;
+    
+    // Test 1: Forward permutation with column-major matrix
+    {
+        const int m = 3; // Number of rows
+        const int n = 4; // Number of columns
+        
+        // Create a matrix in column-major format
+        double x_col[12] = {
+            1.0, 2.0, 3.0,  // First column
+            4.0, 5.0, 6.0,  // Second column
+            7.0, 8.0, 9.0,  // Third column
+            10.0, 11.0, 12.0 // Fourth column
+        };
+        
+        // Permutation vector (1-indexed as per LAPACK standard)
+        int k[4] = {3, 1, 4, 2};
+        
+        std::cout << "Original column-major matrix:" << std::endl;
+        print_matrix(x_col, m, n, m);
+        
+        // Call embedded dlapmt with forward permutation
+        int forwrd = 1; // true for forward permutation
+        nasoq::embedded::dlapmt(LAPACK_COL_MAJOR, forwrd, m, n, x_col, m, k);
+        
+        std::cout << "After forward permutation:" << std::endl;
+        print_matrix(x_col, m, n, m);
+        
+        // Expected result after permutation:
+        // Column 1 should be original column 3 (7, 8, 9)
+        // Column 2 should be original column 1 (1, 2, 3)
+        // Column 3 should be original column 4 (10, 11, 12)
+        // Column 4 should be original column 2 (4, 5, 6)
+        
+        test_assert(approx_equal(x_col[0], 7.0), "x_col[0,0] should be 7.0");
+        test_assert(approx_equal(x_col[1], 8.0), "x_col[1,0] should be 8.0");
+        test_assert(approx_equal(x_col[2], 9.0), "x_col[2,0] should be 9.0");
+        
+        test_assert(approx_equal(x_col[3], 1.0), "x_col[0,1] should be 1.0");
+        test_assert(approx_equal(x_col[4], 2.0), "x_col[1,1] should be 2.0");
+        test_assert(approx_equal(x_col[5], 3.0), "x_col[2,1] should be 3.0");
+        
+        test_assert(approx_equal(x_col[6], 10.0), "x_col[0,2] should be 10.0");
+        test_assert(approx_equal(x_col[7], 11.0), "x_col[1,2] should be 11.0");
+        test_assert(approx_equal(x_col[8], 12.0), "x_col[2,2] should be 12.0");
+        
+        test_assert(approx_equal(x_col[9], 4.0), "x_col[0,3] should be 4.0");
+        test_assert(approx_equal(x_col[10], 5.0), "x_col[1,3] should be 5.0");
+        test_assert(approx_equal(x_col[11], 6.0), "x_col[2,3] should be 6.0");
+    }
+    
+    // Test 2: Backward permutation with column-major matrix
+    {
+        const int m = 3; // Number of rows
+        const int n = 4; // Number of columns
+        
+        // Create a matrix in column-major format
+        double x_col[12] = {
+            1.0, 2.0, 3.0,  // First column
+            4.0, 5.0, 6.0,  // Second column
+            7.0, 8.0, 9.0,  // Third column
+            10.0, 11.0, 12.0 // Fourth column
+        };
+        
+        // Permutation vector (1-indexed as per LAPACK standard)
+        int k[4] = {2, 4, 1, 3};
+        
+        std::cout << "\nOriginal column-major matrix for backward permutation:" << std::endl;
+        print_matrix(x_col, m, n, m);
+        
+        // Call embedded dlapmt with backward permutation
+        int forwrd = 0; // false for backward permutation
+        nasoq::embedded::dlapmt(LAPACK_COL_MAJOR, forwrd, m, n, x_col, m, k);
+        
+        std::cout << "After backward permutation:" << std::endl;
+        print_matrix(x_col, m, n, m);
+        
+        // Expected result after permutation:
+        // Column 1 should move to column 2's position (1,2,3 -> col 2)
+        // Column 2 should move to column 4's position (4,5,6 -> col 4)
+        // Column 3 should move to column 1's position (7,8,9 -> col 1)
+        // Column 4 should move to column 3's position (10,11,12 -> col 3)
+        
+        test_assert(approx_equal(x_col[0], 7.0), "x_col[0,0] should be 7.0");
+        test_assert(approx_equal(x_col[1], 8.0), "x_col[1,0] should be 8.0");
+        test_assert(approx_equal(x_col[2], 9.0), "x_col[2,0] should be 9.0");
+        
+        test_assert(approx_equal(x_col[3], 1.0), "x_col[0,1] should be 1.0");
+        test_assert(approx_equal(x_col[4], 2.0), "x_col[1,1] should be 2.0");
+        test_assert(approx_equal(x_col[5], 3.0), "x_col[2,1] should be 3.0");
+        
+        test_assert(approx_equal(x_col[6], 10.0), "x_col[0,2] should be 10.0");
+        test_assert(approx_equal(x_col[7], 11.0), "x_col[1,2] should be 11.0");
+        test_assert(approx_equal(x_col[8], 12.0), "x_col[2,2] should be 12.0");
+        
+        test_assert(approx_equal(x_col[9], 4.0), "x_col[0,3] should be 4.0");
+        test_assert(approx_equal(x_col[10], 5.0), "x_col[1,3] should be 5.0");
+        test_assert(approx_equal(x_col[11], 6.0), "x_col[2,3] should be 6.0");
+    }
+    
+    // Test 3: Row-major format
+    {
+        const int m = 3; // Number of rows
+        const int n = 4; // Number of columns
+        
+        // Create a matrix in row-major format
+        double x_row[12] = {
+            1.0, 4.0, 7.0, 10.0,  // First row
+            2.0, 5.0, 8.0, 11.0,  // Second row
+            3.0, 6.0, 9.0, 12.0   // Third row
+        };
+        
+        // Permutation vector (1-indexed as per LAPACK standard)
+        int k[4] = {3, 1, 4, 2};
+        
+        std::cout << "\nOriginal row-major matrix:" << std::endl;
+        print_matrix(x_row, m, n, n);
+        
+        // Call embedded dlapmt with forward permutation
+        int forwrd = 1; // true for forward permutation
+        nasoq::embedded::dlapmt(LAPACK_ROW_MAJOR, forwrd, m, n, x_row, n, k);
+        
+        std::cout << "After forward permutation in row-major format:" << std::endl;
+        print_matrix(x_row, m, n, n);
+        
+        // Expected result after permutation:
+        // Column 1 should be original column 3 (7, 8, 9)
+        // Column 2 should be original column 1 (1, 2, 3)
+        // Column 3 should be original column 4 (10, 11, 12)
+        // Column 4 should be original column 2 (4, 5, 6)
+        
+        test_assert(approx_equal(x_row[0], 7.0), "x_row[0,0] should be 7.0");
+        test_assert(approx_equal(x_row[1], 1.0), "x_row[0,1] should be 1.0");
+        test_assert(approx_equal(x_row[2], 10.0), "x_row[0,2] should be 10.0");
+        test_assert(approx_equal(x_row[3], 4.0), "x_row[0,3] should be 4.0");
+        
+        test_assert(approx_equal(x_row[4], 8.0), "x_row[1,0] should be 8.0");
+        test_assert(approx_equal(x_row[5], 2.0), "x_row[1,1] should be 2.0");
+        test_assert(approx_equal(x_row[6], 11.0), "x_row[1,2] should be 11.0");
+        test_assert(approx_equal(x_row[7], 5.0), "x_row[1,3] should be 5.0");
+        
+        test_assert(approx_equal(x_row[8], 9.0), "x_row[2,0] should be 9.0");
+        test_assert(approx_equal(x_row[9], 3.0), "x_row[2,1] should be 3.0");
+        test_assert(approx_equal(x_row[10], 12.0), "x_row[2,2] should be 12.0");
+        test_assert(approx_equal(x_row[11], 6.0), "x_row[2,3] should be 6.0");
+    }
+    
     std::cout << "\nEmbedded BLAS functions test completed." << std::endl;
     std::cout << "=================== TEST SUMMARY ===================" << std::endl;
     
