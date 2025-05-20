@@ -88,6 +88,8 @@ namespace nasoq {
 #define SYM_SYTRF nasoq::embedded::sym_sytrf
 // Add embedded version of dlapmt
 #define NASOQ_DLAPMT nasoq::embedded::dlapmt
+// Add embedded version of dgetrf
+#define NASOQ_DGETRF nasoq::embedded::dgetrf
 #else
 // Use non-embedded versions (default implementations)
 #define NASOQ_DOT nasoq::dot
@@ -95,6 +97,8 @@ namespace nasoq {
 #define SYM_SYTRF nasoq::sym_sytrf
 // Use clapacke version for dlapmt when not using embedded
 #define NASOQ_DLAPMT nasoq::clapacke::LAPACKE_dlapmt
+// Use clapacke version for dgetrf when not using embedded
+#define NASOQ_DGETRF nasoq::clapacke::LAPACKE_dgetrf
 #endif
 
 // Define SYM_DSCAL if not already defined by the EMBEDDED section

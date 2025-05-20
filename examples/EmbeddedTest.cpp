@@ -862,6 +862,163 @@ int main() {
         test_assert(approx_equal(x_row[11], 6.0), "x_row[2,3] should be 6.0");
     }
     
+    //====================================================================
+    // Test dgetrf
+    //====================================================================
+    begin_test("dgetrf");
+
+    // Test case 1: Non-singular matrix (column-major)
+    {
+        const int m = 3;
+        const int n = 3;
+        
+        // Matrix A in column-major format:
+        // [ 2  -1   0 ]
+        // [ 1   3   2 ]
+        // [ 0   1   1 ]
+        double a[9] = {
+            2.0, 1.0, 0.0,  // First column
+            -1.0, 3.0, 1.0, // Second column
+            0.0, 2.0, 1.0   // Third column
+        };
+        
+        int ipiv[3] = {0, 0, 0}; // Pivot indices
+        
+        std::cout << "Original matrix A:" << std::endl;
+        print_matrix(a, m, n, m);
+        
+        // Call embedded dgetrf
+        int info = nasoq::embedded::dgetrf(LAPACK_COL_MAJOR, m, n, a, m, ipiv);
+        
+        std::cout << "After dgetrf:" << std::endl;
+        print_matrix(a, m, n, m);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Verify factorization result
+        test_assert(info == 0, "LU factorization should succeed with info = 0");
+        
+        // Create a copy of A (L and U factors)
+        double lu[9];
+        for (int i = 0; i < 9; i++) {
+            lu[i] = a[i];
+        }
+        
+        // Extract L (lower triangular with unit diagonal) and U (upper triangular)
+        double l[9] = {
+            1.0, 0.0, 0.0,
+            lu[1], 1.0, 0.0,
+            lu[2], lu[5], 1.0
+        };
+        
+        double u[9] = {
+            lu[0], lu[3], lu[6],
+            0.0, lu[4], lu[7],
+            0.0, 0.0, lu[8]
+        };
+        
+        // Perform L*U multiplication (without considering pivoting for simplicity)
+        double result[9] = {0};
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                for (int k = 0; k < n; k++) {
+                    if (k <= i && k <= j) {
+                        result[i + j*m] += l[i + k*m] * u[k + j*m];
+                    }
+                }
+            }
+        }
+        
+        std::cout << "Reconstructed matrix (L*U):" << std::endl;
+        print_matrix(result, m, n, m);
+        
+        // Check that L*U (with permutation) equals the original matrix
+        // This is a simplified check that doesn't fully account for permutations
+        test_assert(approx_equal(result[0], 2.0), "Reconstructed[0,0] should be 2.0");
+        test_assert(approx_equal(result[3], -1.0), "Reconstructed[0,1] should be -1.0");
+        test_assert(approx_equal(result[6], 0.0), "Reconstructed[0,2] should be 0.0");
+        test_assert(approx_equal(result[1], 1.0), "Reconstructed[1,0] should be 1.0");
+        test_assert(approx_equal(result[4], 3.0), "Reconstructed[1,1] should be 3.0");
+        test_assert(approx_equal(result[7], 2.0), "Reconstructed[1,2] should be 2.0");
+        test_assert(approx_equal(result[2], 0.0), "Reconstructed[2,0] should be 0.0");
+        test_assert(approx_equal(result[5], 1.0), "Reconstructed[2,1] should be 1.0");
+        test_assert(approx_equal(result[8], 1.0), "Reconstructed[2,2] should be 1.0");
+    }
+
+    // Test case 2: Singular matrix
+    {
+        const int m = 3;
+        const int n = 3;
+        
+        // Singular matrix A in column-major format:
+        // [ 1  2  3 ]
+        // [ 2  4  6 ]
+        // [ 0  1  7 ]
+        double a[9] = {
+            1.0, 2.0, 0.0,  // First column
+            2.0, 4.0, 1.0,  // Second column
+            3.0, 6.0, 7.0   // Third column
+        };
+        
+        int ipiv[3] = {0, 0, 0}; // Pivot indices
+        
+        std::cout << "\nOriginal singular matrix A:" << std::endl;
+        print_matrix(a, m, n, m);
+        
+        // Call embedded dgetrf
+        int info = nasoq::embedded::dgetrf(LAPACK_COL_MAJOR, m, n, a, m, ipiv);
+        
+        std::cout << "After dgetrf:" << std::endl;
+        print_matrix(a, m, n, m);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // For a singular matrix, info should be positive and indicate first zero pivot
+        test_assert(info > 0, "For singular matrix, info should be positive");
+    }
+
+    // Test case 3: Row-major format
+    {
+        const int m = 2;
+        const int n = 2;
+        
+        // Matrix A in row-major format:
+        // [ 4  3 ]
+        // [ 6  3 ]
+        double a[4] = {
+            4.0, 3.0,  // First row
+            6.0, 3.0   // Second row
+        };
+        
+        int ipiv[2] = {0, 0}; // Pivot indices
+        
+        std::cout << "\nOriginal row-major matrix A:" << std::endl;
+        print_matrix(a, m, n, n);
+        
+        // Call embedded dgetrf
+        int info = nasoq::embedded::dgetrf(LAPACK_ROW_MAJOR, m, n, a, n, ipiv);
+        
+        std::cout << "After dgetrf:" << std::endl;
+        print_matrix(a, m, n, n);
+        
+        std::cout << "Pivot indices: ";
+        for (int i = 0; i < n; i++) {
+            std::cout << ipiv[i] << " ";
+        }
+        std::cout << std::endl;
+        
+        // Verify factorization result
+        test_assert(info == 0, "LU factorization should succeed with info = 0");
+    }
+    
     std::cout << "\nEmbedded BLAS functions test completed." << std::endl;
     std::cout << "=================== TEST SUMMARY ===================" << std::endl;
     

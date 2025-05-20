@@ -805,5 +805,136 @@ int dlapmt(int matrix_layout, int forwrd, int m, int n,
     }
 }
 
+int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
+    std::cout << "\n\n**************************************************************" << std::endl;
+    std::cout << "*** [EMBEDDED] Using embedded dgetrf implementation (m=" << m << ", n=" << n << ") ***" << std::endl;
+    std::cout << "**************************************************************\n\n" << std::flush;
+    
+    // Constants for matrix layout
+    const int LAPACK_ROW_MAJOR = 101;
+    const int LAPACK_COL_MAJOR = 102;
+    
+    // Check for invalid parameters
+    if (matrix_layout != LAPACK_ROW_MAJOR && matrix_layout != LAPACK_COL_MAJOR) {
+        return -1;
+    }
+    
+    if (m < 0) {
+        return -2;
+    }
+    
+    if (n < 0) {
+        return -3;
+    }
+    
+    if (matrix_layout == LAPACK_COL_MAJOR && lda < std::max(1, m)) {
+        return -5;
+    }
+    
+    if (matrix_layout == LAPACK_ROW_MAJOR && lda < std::max(1, n)) {
+        return -5;
+    }
+    
+    // Early return for empty matrices
+    if (m == 0 || n == 0) {
+        return 0;
+    }
+    
+    int min_mn = std::min(m, n);
+    int info = 0;
+    
+    // Main implementation for column-major format
+    if (matrix_layout == LAPACK_COL_MAJOR) {
+        // LU factorization for column-major format
+        for (int k = 0; k < min_mn; k++) {
+            // Find pivot - the row with largest absolute value in column k
+            int p = k;
+            double max_val = std::abs(a[k + k*lda]);
+            
+            for (int i = k+1; i < m; i++) {
+                double val = std::abs(a[i + k*lda]);
+                if (val > max_val) {
+                    max_val = val;
+                    p = i;
+                }
+            }
+            
+            // Record pivot index (1-based as per LAPACK standard)
+            ipiv[k] = p + 1;
+            
+            // Check for singularity
+            if (a[p + k*lda] == 0.0) {
+                if (info == 0) info = k + 1;
+                continue;
+            }
+            
+            // Swap rows if necessary
+            if (p != k) {
+                for (int j = 0; j < n; j++) {
+                    std::swap(a[k + j*lda], a[p + j*lda]);
+                }
+            }
+            
+            // Compute elements of L (multipliers)
+            for (int i = k+1; i < m; i++) {
+                a[i + k*lda] /= a[k + k*lda];
+            }
+            
+            // Update trailing submatrix
+            for (int j = k+1; j < n; j++) {
+                for (int i = k+1; i < m; i++) {
+                    a[i + j*lda] -= a[i + k*lda] * a[k + j*lda];
+                }
+            }
+        }
+    }
+    else { // Row-major format
+        // LU factorization for row-major format
+        for (int k = 0; k < min_mn; k++) {
+            // Find pivot - the row with largest absolute value in column k
+            int p = k;
+            double max_val = std::abs(a[k*lda + k]);
+            
+            for (int i = k+1; i < m; i++) {
+                double val = std::abs(a[i*lda + k]);
+                if (val > max_val) {
+                    max_val = val;
+                    p = i;
+                }
+            }
+            
+            // Record pivot index (1-based as per LAPACK standard)
+            ipiv[k] = p + 1;
+            
+            // Check for singularity
+            if (a[p*lda + k] == 0.0) {
+                if (info == 0) info = k + 1;
+                continue;
+            }
+            
+            // Swap rows if necessary
+            if (p != k) {
+                for (int j = 0; j < n; j++) {
+                    std::swap(a[k*lda + j], a[p*lda + j]);
+                }
+            }
+            
+            // Compute elements of L (multipliers)
+            for (int i = k+1; i < m; i++) {
+                a[i*lda + k] /= a[k*lda + k];
+            }
+            
+            // Update trailing submatrix
+            for (int i = k+1; i < m; i++) {
+                for (int j = k+1; j < n; j++) {
+                    a[i*lda + j] -= a[i*lda + k] * a[k*lda + j];
+                }
+            }
+        }
+    }
+    
+    return info;
+}
+
 } // namespace embedded
 } // namespace nasoq 

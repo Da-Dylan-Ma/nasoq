@@ -218,6 +218,26 @@ void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere)
 int dlapmt(int matrix_layout, int forwrd, int m, int n, 
            double *x, int ldx, int *k);
 
+/**
+ * @brief LU factorization (DGETRF)
+ * 
+ * Computes an LU factorization of a general M-by-N matrix A using partial
+ * pivoting with row interchanges.
+ * 
+ * The factorization has the form A = P * L * U where P is a permutation matrix,
+ * L is lower triangular with unit diagonal elements, and U is upper triangular.
+ * 
+ * @param matrix_layout  Layout of matrix (LAPACK_ROW_MAJOR or LAPACK_COL_MAJOR)
+ * @param m              Number of rows of the matrix A
+ * @param n              Number of columns of the matrix A
+ * @param a              Matrix A (modified in-place to contain L and U)
+ * @param lda            Leading dimension of A
+ * @param ipiv           Pivot indices (modified in-place)
+ * @return               0 if successful, negative error code if an argument had an illegal value,
+ *                       positive value i if U(i,i) is exactly zero (matrix is singular)
+ */
+int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv);
+
 } // namespace embedded
 } // namespace nasoq
 

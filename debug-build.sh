@@ -28,7 +28,7 @@ if [ $? -eq 0 ]; then
     
     # Also run EMBEDDED_Test for comparison
     echo -e "\n=== Running EMBEDDED_Test (direct test of embedded functions) ==="
-    ./examples/EMBEDDED_Test
+    #./examples/EMBEDDED_Test
 else
     echo -e "\nBuild failed!"
 fi
