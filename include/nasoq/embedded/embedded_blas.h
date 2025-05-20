@@ -184,6 +184,21 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
            const int *m, const int *n, const double *alpha,
            const double *a, const int *lda, double *b, const int *ldb);
 
+/**
+ * @brief Symmetric factorization (SYTRF)
+ * 
+ * Computes the factorization of a symmetric matrix A using the
+ * LDL^T factorization where L is a lower triangular matrix with 
+ * unit diagonal and D is a diagonal matrix.
+ * 
+ * @param A       The input matrix A (modified in-place to contain the factorization)
+ * @param n       The order of the matrix A
+ * @param stride  The leading dimension of A
+ * @param nbpivot Pivot counter (incremented if small pivots are encountered)
+ * @param critere Threshold for detecting small pivots
+ */
+void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere);
+
 } // namespace embedded
 } // namespace nasoq
 

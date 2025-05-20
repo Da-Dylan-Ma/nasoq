@@ -604,5 +604,41 @@ void swap_vector(int n, double *a, double *b, int lda) {
     }
 }
 
+void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere) {
+    std::cout << "\n\n**************************************************************" << std::endl;
+    std::cout << "*** [EMBEDDED] Using embedded sym_sytrf implementation (n=" << n << ", stride=" << stride << ") ***" << std::endl;
+    std::cout << "**************************************************************\n\n" << std::flush;
+    
+    const int iun = 1;
+    const double one = 1.0;
+    double *tmp, *tmp1;
+    
+    for (int k = 0; k < n; k++) {
+        tmp = A + k * (stride + 1);
+        
+        #if 0 // Small pivot detection (disabled by default, same as in original implementation)
+        if (std::abs(*tmp) <= critere) {
+            (*tmp) = critere;
+            (*nbpivot)++;
+        }
+        #endif
+        
+        tmp1 = tmp + 1;
+        int tmp_dim = n - k - 1;
+        double sca_tmp = one / (*tmp);
+        
+        // Scale column k below the diagonal by 1/A[k,k]
+        dscal(&tmp_dim, &sca_tmp, tmp1, &iun);
+        
+        // Perform symmetric rank-1 update of the trailing submatrix
+        int dimx = n - k - 1;
+        double diag = -(*tmp);
+        double *tmp1_stride = tmp1 + stride;
+        
+        char uplo = 'L';
+        dsyr(&uplo, &dimx, &diag, tmp1, &iun, tmp1_stride, &stride);
+    }
+}
+
 } // namespace embedded
 } // namespace nasoq 

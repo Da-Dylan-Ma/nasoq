@@ -1,11 +1,53 @@
 #include <iostream>
 #include <cassert>
 #include <iomanip>
+#include <map>
+#include <string>
+#include <vector>
 #include "nasoq/embedded/embedded_blas.h"
 
 // Helper function to check if two values are approximately equal
 bool approx_equal(double a, double b, double epsilon = 1e-10) {
     return std::abs(a - b) < epsilon;
+}
+
+// Custom test framework to continue on failures
+struct TestFunction {
+    std::string name;
+    int passed = 0;
+    int failed = 0;
+    std::vector<std::string> failures;
+    
+    // Add a constructor that takes a name parameter
+    TestFunction() {}
+    TestFunction(const std::string& test_name) : name(test_name) {}
+};
+
+std::map<std::string, TestFunction> test_functions;
+std::string current_test_function = "";
+
+// Start a new test function
+void begin_test(const std::string& name) {
+    current_test_function = name;
+    std::cout << "\n===== Testing " << name << " =====" << std::endl;
+    
+    // Initialize if not already present
+    if (test_functions.find(name) == test_functions.end()) {
+        test_functions[name] = TestFunction{name};
+    }
+}
+
+// Custom assertion that logs failure but continues execution
+void test_assert(bool condition, const std::string& message) {
+    TestFunction& func = test_functions[current_test_function];
+    
+    if (condition) {
+        func.passed++;
+    } else {
+        func.failed++;
+        func.failures.push_back(message);
+        std::cout << "ASSERTION FAILED: " << message << std::endl;
+    }
 }
 
 // Helper function to print a matrix
@@ -24,7 +66,7 @@ int main() {
     //====================================================================
     // Test dscal
     //====================================================================
-    std::cout << "\n===== Testing dscal =====" << std::endl;
+    begin_test("dscal");
     const int n = 5;
     const double alpha = 2.0;
     double x[5] = {1.0, 2.0, 3.0, 4.0, 5.0};
@@ -46,21 +88,32 @@ int main() {
     std::cout << std::endl;
     
     // Verify results
-    assert(approx_equal(x[0], 2.0));
-    assert(approx_equal(x[1], 4.0));
-    assert(approx_equal(x[2], 6.0));
-    assert(approx_equal(x[3], 8.0));
-    assert(approx_equal(x[4], 10.0));
+    test_assert(approx_equal(x[0], 2.0), "x[0] should be 2.0");
+    test_assert(approx_equal(x[1], 4.0), "x[1] should be 4.0");
+    test_assert(approx_equal(x[2], 6.0), "x[2] should be 6.0");
+    test_assert(approx_equal(x[3], 8.0), "x[3] should be 8.0");
+    test_assert(approx_equal(x[4], 10.0), "x[4] should be 10.0");
     
     //====================================================================
     // Test dsyr
     //====================================================================
-    std::cout << "\n===== Testing dsyr =====" << std::endl;
+    begin_test("dsyr");
     const int m = 3;
-    double a[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; // 3x3 identity matrix
+    
+    // Initialize a 3x3 identity matrix in column-major order (standard for BLAS)
+    double a[9] = {1.0, 0.0, 0.0,  // First column
+                   0.0, 1.0, 0.0,  // Second column
+                   0.0, 0.0, 1.0}; // Third column
+    
+    // Initialize vector x = [1, 2, 3]
     double y[3] = {1.0, 2.0, 3.0};
-    const double beta = 2.0; // Use 2.0 to match EMBEDDED_Test.cpp tests
+    
+    // Use alpha = 2.0 to match both NASOQ usage and previous test
+    const double beta = 2.0;
+    
+    // Use lower triangular update mode
     const char uplo = 'L';
+    
     int incy = 1;
     int lda = 3;
     
@@ -73,18 +126,24 @@ int main() {
     std::cout << "After dsyr (rank-1 update with y and beta=2.0):" << std::endl;
     print_matrix(a, m, m, lda);
     
-    // Verify results (same as in EMBEDDED_Test.cpp)
-    assert(approx_equal(a[0], 3.0));  // a[0,0]
-    assert(approx_equal(a[3], 2.0));  // a[1,0]
-    assert(approx_equal(a[4], 9.0));  // a[1,1]
-    assert(approx_equal(a[6], 3.0));  // a[2,0]
-    assert(approx_equal(a[7], 6.0));  // a[2,1]
-    assert(approx_equal(a[8], 19.0)); // a[2,2]
+    // For dsyr update with alpha=2.0, x=[1,2,3], and starting with identity matrix:
+    // The L part of result should be:
+    // [ 1 + 2*1*1,      0,      0 ]   [ 3,  0,  0 ]
+    // [ 2*1*2,    1 + 2*2*2,    0 ] = [ 4,  9,  0 ]
+    // [ 2*1*3,      2*2*3,  1 + 2*3*3 ] [ 6, 12, 19 ]
+    
+    // Verify results with detailed comments to ensure correctness
+    test_assert(approx_equal(a[0], 3.0), "a[0,0] = 1 + 2*1*1 should be 3.0");
+    test_assert(approx_equal(a[3], 4.0), "a[1,0] = 2*1*2 should be 4.0");
+    test_assert(approx_equal(a[4], 9.0), "a[1,1] = 1 + 2*2*2 should be 9.0");
+    test_assert(approx_equal(a[6], 6.0), "a[2,0] = 2*1*3 should be 6.0");
+    test_assert(approx_equal(a[7], 12.0), "a[2,1] = 2*2*3 should be 12.0");
+    test_assert(approx_equal(a[8], 19.0), "a[2,2] = 1 + 2*3*3 should be 19.0");
     
     //====================================================================
     // Test dcopy
     //====================================================================
-    std::cout << "\n===== Testing dcopy =====" << std::endl;
+    begin_test("dcopy");
     const int n_copy = 4;
     double src[4] = {1.0, 2.0, 3.0, 4.0};
     double dst[4] = {0.0, 0.0, 0.0, 0.0};
@@ -114,13 +173,13 @@ int main() {
     
     // Verify results
     for (int i = 0; i < n_copy; i++) {
-        assert(approx_equal(dst[i], src[i]));
+        test_assert(approx_equal(dst[i], src[i]), "dst[" + std::to_string(i) + "] should be src[" + std::to_string(i) + "]");
     }
     
     //====================================================================
     // Test blocked_2by2_solver
     //====================================================================
-    std::cout << "\n===== Testing blocked_2by2_solver =====" << std::endl;
+    begin_test("blocked_2by2_solver");
     
     // 1x1 and 2x2 blocks test case
     int n_blk = 3;
@@ -147,16 +206,16 @@ int main() {
     // For first block (2x2): [2.0 1.0; 1.0 3.0] * [rhs[0]; rhs[1]] = [4.0; 11.0]
     double sol_check1 = D[0] * rhs[0] + D[4] * rhs[1];
     double sol_check2 = D[4] * rhs[0] + D[1] * rhs[1];
-    assert(approx_equal(sol_check1, 4.0));
-    assert(approx_equal(sol_check2, 11.0));
+    test_assert(approx_equal(sol_check1, 4.0), "First block solution should be 4.0");
+    test_assert(approx_equal(sol_check2, 11.0), "First block solution should be 11.0");
     
     // For 1x1 block: 4.0 * rhs[2] = 12.0
-    assert(approx_equal(D[2] * rhs[2], 12.0));
+    test_assert(approx_equal(D[2] * rhs[2], 12.0), "1x1 block solution should be 12.0");
     
     //====================================================================
     // Test dgemv
     //====================================================================
-    std::cout << "\n===== Testing dgemv =====" << std::endl;
+    begin_test("dgemv");
     
     // Test case 1: Non-transpose operation
     {
@@ -197,9 +256,9 @@ int main() {
         // [3 6]         [1]   [1+6+18]   [25]
         
         // Verify results
-        assert(approx_equal(vec_y[0], 15.0));
-        assert(approx_equal(vec_y[1], 20.0));
-        assert(approx_equal(vec_y[2], 25.0));
+        test_assert(approx_equal(vec_y[0], 15.0), "vec_y[0] should be 15.0");
+        test_assert(approx_equal(vec_y[1], 20.0), "vec_y[1] should be 20.0");
+        test_assert(approx_equal(vec_y[2], 25.0), "vec_y[2] should be 25.0");
     }
     
     // Test case 2: Transpose operation
@@ -241,14 +300,14 @@ int main() {
         //           [4]
         
         // Verify results
-        assert(approx_equal(vec_y[0], 40.5));
-        assert(approx_equal(vec_y[1], 94.5));
+        test_assert(approx_equal(vec_y[0], 40.5), "vec_y[0] should be 40.5");
+        test_assert(approx_equal(vec_y[1], 94.5), "vec_y[1] should be 94.5");
     }
     
     //====================================================================
     // Test blocked_2by2_mult
     //====================================================================
-    std::cout << "\n===== Testing blocked_2by2_mult =====" << std::endl;
+    begin_test("blocked_2by2_mult");
     
     // Test case 1: 1x1 blocks
     {
@@ -288,10 +347,10 @@ int main() {
         // [0 3] * [4 5] = [3*4 3*5] = [12 15]
         
         // Verify results
-        assert(approx_equal(dst_mult[0], 2.0));
-        assert(approx_equal(dst_mult[1], 12.0));
-        assert(approx_equal(dst_mult[2], 4.0));
-        assert(approx_equal(dst_mult[3], 15.0));
+        test_assert(approx_equal(dst_mult[0], 2.0), "dst_mult[0] should be 2.0");
+        test_assert(approx_equal(dst_mult[1], 12.0), "dst_mult[1] should be 12.0");
+        test_assert(approx_equal(dst_mult[2], 4.0), "dst_mult[2] should be 4.0");
+        test_assert(approx_equal(dst_mult[3], 15.0), "dst_mult[3] should be 15.0");
     }
     
     // Test case 2: with 2x2 block
@@ -330,16 +389,16 @@ int main() {
         // [1 3] * [4 5] = [1*1+3*4 1*2+3*5] = [13 17]
         
         // Verify results
-        assert(approx_equal(dst_mult[0], 6.0));
-        assert(approx_equal(dst_mult[1], 13.0));
-        assert(approx_equal(dst_mult[2], 9.0));
-        assert(approx_equal(dst_mult[3], 17.0));
+        test_assert(approx_equal(dst_mult[0], 6.0), "dst_mult[0] should be 6.0");
+        test_assert(approx_equal(dst_mult[1], 13.0), "dst_mult[1] should be 13.0");
+        test_assert(approx_equal(dst_mult[2], 9.0), "dst_mult[2] should be 9.0");
+        test_assert(approx_equal(dst_mult[3], 17.0), "dst_mult[3] should be 17.0");
     }
     
     //====================================================================
     // Test dgemm
     //====================================================================
-    std::cout << "\n===== Testing dgemm =====" << std::endl;
+    begin_test("dgemm");
     
     // Test case 1: No transpose
     {
@@ -388,12 +447,12 @@ int main() {
         // [2 4] * [2 4 6] = [10 22  34]
         
         // Check results
-        assert(approx_equal(c_gemm[0], 7.0));  // c[0,0]
-        assert(approx_equal(c_gemm[1], 10.0)); // c[1,0]
-        assert(approx_equal(c_gemm[2], 15.0)); // c[0,1]
-        assert(approx_equal(c_gemm[3], 22.0)); // c[1,1]
-        assert(approx_equal(c_gemm[4], 23.0)); // c[0,2]
-        assert(approx_equal(c_gemm[5], 34.0)); // c[1,2]
+        test_assert(approx_equal(c_gemm[0], 7.0), "c[0,0] should be 7.0");
+        test_assert(approx_equal(c_gemm[1], 10.0), "c[1,0] should be 10.0");
+        test_assert(approx_equal(c_gemm[2], 15.0), "c[0,1] should be 15.0");
+        test_assert(approx_equal(c_gemm[3], 22.0), "c[1,1] should be 22.0");
+        test_assert(approx_equal(c_gemm[4], 23.0), "c[0,2] should be 23.0");
+        test_assert(approx_equal(c_gemm[5], 34.0), "c[1,2] should be 34.0");
     }
     
     // Test case 2: With transpose A
@@ -445,16 +504,16 @@ int main() {
         // C = [40.5 83.5; 95.0 198.0]
         
         // Check results
-        assert(approx_equal(c_gemm[0], 40.5));  // c[0,0]
-        assert(approx_equal(c_gemm[1], 95.0));  // c[1,0]
-        assert(approx_equal(c_gemm[2], 83.5));  // c[0,1]
-        assert(approx_equal(c_gemm[3], 198.0)); // c[1,1]
+        test_assert(approx_equal(c_gemm[0], 40.5), "c[0,0] = 2*(1*2 + 2*3 + 3*4) + 0.5*1 = 40.5");
+        test_assert(approx_equal(c_gemm[1], 95.0), "c[1,0] = 2*(4*2 + 5*3 + 6*4) + 0.5*2 = 95.0");
+        test_assert(approx_equal(c_gemm[2], 83.5), "c[0,1] = 2*(1*5 + 2*6 + 3*7) + 0.5*3 = 83.5");
+        test_assert(approx_equal(c_gemm[3], 198.0), "c[1,1] = 2*(4*5 + 5*6 + 6*7) + 0.5*4 = 198.0");
     }
     
     //====================================================================
     // Test dtrsm
     //====================================================================
-    std::cout << "\n===== Testing dtrsm =====" << std::endl;
+    begin_test("dtrsm");
     
     // Test case 1: Lower triangular
     {
@@ -501,10 +560,10 @@ int main() {
         // 1*x12 + 3*x22 = 25 => 3*x22 = 25-9 => x22 = 16/3
         
         // Check results
-        assert(approx_equal(b_trsm[0], 3.0));      // x11
-        assert(approx_equal(b_trsm[1], 2.0/3.0));  // x21
-        assert(approx_equal(b_trsm[2], 9.0));      // x12
-        assert(approx_equal(b_trsm[3], 16.0/3.0)); // x22
+        test_assert(approx_equal(b_trsm[0], 3.0), "b_trsm[0] should be 3.0");
+        test_assert(approx_equal(b_trsm[1], 2.0/3.0), "b_trsm[1] should be 2.0/3.0");
+        test_assert(approx_equal(b_trsm[2], 9.0), "b_trsm[2] should be 9.0");
+        test_assert(approx_equal(b_trsm[3], 16.0/3.0), "b_trsm[3] should be 16.0/3.0");
     }
     
     // Test case 2: Upper triangular
@@ -552,12 +611,136 @@ int main() {
         // 2*x12 + 1*x22 = 24 => 2*x12 = 24-6 => x12 = 9
         
         // Check results
-        assert(approx_equal(b_trsm[0], 5.5)); // x11
-        assert(approx_equal(b_trsm[1], 1.0)); // x21
-        assert(approx_equal(b_trsm[2], 9.0)); // x12
-        assert(approx_equal(b_trsm[3], 6.0)); // x22
+        test_assert(approx_equal(b_trsm[0], 5.5), "b_trsm[0] should be 5.5");
+        test_assert(approx_equal(b_trsm[1], 1.0), "b_trsm[1] should be 1.0");
+        test_assert(approx_equal(b_trsm[2], 9.0), "b_trsm[2] should be 9.0");
+        test_assert(approx_equal(b_trsm[3], 6.0), "b_trsm[3] should be 6.0");
     }
     
-    std::cout << "\nEmbedded BLAS functions test completed successfully!" << std::endl;
-    return 0;
+    //====================================================================
+    // Test sym_sytrf
+    //====================================================================
+    begin_test("sym_sytrf");
+    
+    // Create a 3x3 symmetric matrix A = [ 4 2 0; 2 5 1; 0 1 3 ]
+    // in column-major format
+    const int n_sytrf = 3;
+    double a_sytrf[9] = {
+        4.0, 2.0, 0.0,  // First column
+        2.0, 5.0, 1.0,  // Second column
+        0.0, 1.0, 3.0   // Third column
+    };
+    
+    // Expected factorization:
+    // D = diag(4, 4, 2.75)
+    // L = [ 1 0 0; 0.5 1 0; 0 0.25 1 ]
+    
+    int stride_sytrf = n_sytrf;
+    int nbpivot_sytrf = 0;
+    double critere_sytrf = 1e-10;
+    
+    std::cout << "Original matrix A:" << std::endl;
+    print_matrix(a_sytrf, n_sytrf, n_sytrf, stride_sytrf);
+    
+    // Call embedded sym_sytrf
+    nasoq::embedded::sym_sytrf(a_sytrf, n_sytrf, stride_sytrf, &nbpivot_sytrf, critere_sytrf);
+    
+    std::cout << "After sym_sytrf:" << std::endl;
+    print_matrix(a_sytrf, n_sytrf, n_sytrf, stride_sytrf);
+    
+    // Extract diagonal elements (D)
+    double d_extracted[3] = {
+        a_sytrf[0],        // D[0,0]
+        a_sytrf[4],        // D[1,1]
+        a_sytrf[8]         // D[2,2]
+    };
+    
+    // Extract off-diagonal elements (L, with implicit unit diagonal)
+    double l_extracted[3] = {
+        // Unit diagonal elements are implicit and not stored
+        a_sytrf[3],        // L[1,0]
+        a_sytrf[6],        // L[2,0]
+        a_sytrf[7]         // L[2,1]
+    };
+    
+    // Verify factorization
+    test_assert(approx_equal(d_extracted[0], 4.0), "D[0,0] should be 4.0");
+    test_assert(approx_equal(d_extracted[1], 4.0), "D[1,1] should be 4.0");
+    test_assert(approx_equal(d_extracted[2], 2.75), "D[2,2] should be 2.75");
+    
+    test_assert(approx_equal(l_extracted[0], 0.5), "L[1,0] should be 0.5");
+    test_assert(approx_equal(l_extracted[1], 0.0), "L[2,0] should be 0.0");
+    test_assert(approx_equal(l_extracted[2], 0.25), "L[2,1] should be 0.25");
+    
+    // Reconstruct original matrix to verify factorization
+    // A = L * D * L^T
+    double reconstructed[9] = {0.0};
+    
+    // Manual reconstruction for verification
+    // A[0,0] = D[0,0] * L[0,0]^2 = 4.0 * 1^2 = 4.0
+    reconstructed[0] = d_extracted[0];
+    
+    // A[1,0] = D[0,0] * L[1,0] = 4.0 * 0.5 = 2.0
+    reconstructed[3] = d_extracted[0] * l_extracted[0];
+    
+    // A[1,1] = D[0,0] * L[1,0]^2 + D[1,1] = 4.0 * 0.5^2 + 4.0 = 5.0
+    reconstructed[4] = d_extracted[0] * l_extracted[0] * l_extracted[0] + d_extracted[1];
+    
+    // A[2,0] = D[0,0] * L[2,0] + D[1,1] * L[2,1] * L[1,0] = 4.0 * 0.0 + 4.0 * 0.25 * 0.5 = 0.5
+    reconstructed[6] = d_extracted[0] * l_extracted[1] + d_extracted[1] * l_extracted[2] * l_extracted[0];
+    
+    // A[2,1] = D[0,0] * L[1,0] * L[2,0] + D[1,1] * L[2,1] = 4.0 * 0.5 * 0.0 + 4.0 * 0.25 = 1.0
+    reconstructed[7] = d_extracted[0] * l_extracted[0] * l_extracted[1] + d_extracted[1] * l_extracted[2];
+    
+    // A[2,2] = D[0,0] * L[2,0]^2 + D[1,1] * L[2,1]^2 + D[2,2] = 4.0 * 0.0^2 + 4.0 * 0.25^2 + 2.75 = 3.0
+    reconstructed[8] = d_extracted[0] * l_extracted[1] * l_extracted[1] + 
+                      d_extracted[1] * l_extracted[2] * l_extracted[2] + 
+                      d_extracted[2];
+    
+    std::cout << "Reconstructed matrix from LDL^T:" << std::endl;
+    print_matrix(reconstructed, n_sytrf, n_sytrf, stride_sytrf);
+    
+    // Verify if the reconstructed matrix matches the original
+    test_assert(approx_equal(reconstructed[0], 4.0), "Reconstructed A[0,0] should be 4.0");
+    test_assert(approx_equal(reconstructed[3], 2.0), "Reconstructed A[1,0] should be 2.0");
+    test_assert(approx_equal(reconstructed[4], 5.0), "Reconstructed A[1,1] should be 5.0");
+    test_assert(approx_equal(reconstructed[6], 0.0), "Reconstructed A[2,0] should be 0.0");
+    test_assert(approx_equal(reconstructed[7], 1.0), "Reconstructed A[2,1] should be 1.0");
+    test_assert(approx_equal(reconstructed[8], 3.0), "Reconstructed A[2,2] should be 3.0");
+    
+    std::cout << "\nEmbedded BLAS functions test completed." << std::endl;
+    std::cout << "=================== TEST SUMMARY ===================" << std::endl;
+    
+    int total_passed = 0;
+    int total_failed = 0;
+    bool all_passed = true;
+    
+    // Replace structured bindings with traditional iterator approach
+    for (const auto& pair : test_functions) {
+        const std::string& name = pair.first;
+        const TestFunction& func = pair.second;
+        
+        total_passed += func.passed;
+        total_failed += func.failed;
+        if (func.failed > 0) {
+            all_passed = false;
+        }
+        
+        // Print test status
+        std::cout << std::left << std::setw(25) << name << ": ";
+        if (func.failed == 0) {
+            std::cout << "PASSED (" << func.passed << " checks)" << std::endl;
+        } else {
+            std::cout << "FAILED (" << func.passed << " passed, " << func.failed << " failed)" << std::endl;
+            for (const auto& failure : func.failures) {
+                std::cout << "  - " << failure << std::endl;
+            }
+        }
+    }
+    
+    std::cout << "===================================================" << std::endl;
+    std::cout << "OVERALL: " << (all_passed ? "PASSED" : "FAILED") << " (Total: " 
+              << total_passed << " passed, " << total_failed << " failed)" << std::endl;
+    
+    return all_passed ? 0 : 1;
 } 

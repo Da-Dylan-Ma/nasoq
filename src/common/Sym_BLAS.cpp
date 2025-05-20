@@ -11,6 +11,9 @@
 namespace nasoq {
 
  void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere) {
+#ifdef EMBEDDED
+  SYM_SYTRF(A, n, stride, nbpivot, critere);
+#else
   int k;
   double one = 1.0;
 #ifdef OPENBLAS
@@ -99,6 +102,7 @@ namespace nasoq {
    }
   }*/
   }
+#endif
  }
 
  double dot(int n, double *a, double *b) {
