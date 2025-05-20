@@ -56,6 +56,30 @@ void dcopy(const int *n, const double *x, const int *incx,
            double *y, const int *incy);
 
 /**
+ * @brief Vector dot product (DDOT)
+ * 
+ * Computes the dot product of two vectors: result = sum(x[i] * y[i])
+ * 
+ * @param n     Number of elements in vectors
+ * @param a     First vector
+ * @param b     Second vector
+ * @return      Dot product of a and b
+ */
+double dot(int n, const double *a, const double *b);
+
+/**
+ * @brief Vector swap (DSWAP)
+ * 
+ * Swaps the contents of two vectors
+ * 
+ * @param n     Number of elements to swap
+ * @param a     First vector
+ * @param b     Second vector
+ * @param lda   Stride between consecutive elements (can be 1 for regular stride or other values)
+ */
+void swap_vector(int n, double *a, double *b, int lda);
+
+/**
  * @brief Solver for block-diagonal matrix with 1x1 and 2x2 blocks
  * 
  * Solves D*X = B where D is a block diagonal matrix with 1x1 and 2x2 blocks

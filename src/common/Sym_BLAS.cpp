@@ -102,14 +102,21 @@ namespace nasoq {
  }
 
  double dot(int n, double *a, double *b) {
+#ifdef EMBEDDED
+  return NASOQ_DOT(n, a, b);
+#else
   double result = 0.0;
   for (int i = 0; i < n; ++i) {
    result += (a[i] * b[i]);
   }
   return result;
+#endif
  }
 
  void swap_vector(int n, double *a, double *b, int lda) {
+#ifdef EMBEDDED
+  NASOQ_SWAP_VECTOR(n, a, b, lda);
+#else
   double tmp = 0;
   if (lda == 1) {
    for (int i = 0; i < n; ++i) {// TODO: might need to use a tmp vector for efficincy
@@ -124,6 +131,7 @@ namespace nasoq {
     *(b + i * lda) = tmp;
    }
   }
+#endif
  }
 
  void swap_int(int &a, int &b) {

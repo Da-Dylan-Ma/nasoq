@@ -81,6 +81,13 @@ namespace nasoq {
 #define SYM_DGEMM nasoq::embedded::dgemm
 #undef SYM_DTRSM
 #define SYM_DTRSM nasoq::embedded::dtrsm
+// Add embedded versions of dot and swap_vector
+#define NASOQ_DOT nasoq::embedded::dot
+#define NASOQ_SWAP_VECTOR nasoq::embedded::swap_vector
+#else
+// Use non-embedded versions (default implementations)
+#define NASOQ_DOT nasoq::dot
+#define NASOQ_SWAP_VECTOR nasoq::swap_vector
 #endif
 
 // Define SYM_DSCAL if not already defined by the EMBEDDED section
