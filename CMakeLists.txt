@@ -36,6 +36,11 @@ option(NASOQ_USE_CLAPACK "Use CLAPACK as the LAPACK implementaiton" OFF)
 option(NASOQ_USE_OPENMP "Use OpenMP" ON)
 option(NASOQ_WITH_MATLAB "Build NASOQ Matlab interface" OFF)
 option(NASOQ_USE_EMBEDDED "Use embedded implementations instead of BLAS/LAPACK" OFF)
+option(USE_CHOLMOD "Use CHOLMOD to solve sparse systems" OFF)
+option(USE_MKL "Use MKL for linear algebra operations" OFF)
+option(USE_OPENMP "Use OpenMP for parallelization" OFF)
+option(NASOQ_EMBED_AMDOrdering "Embed AMD Ordering" ON)
+option(NASOQ_BUILD_PROTOTYPE "Build the hybrid active-projection prototype" OFF)
 
 set(NASOQ_BLAS_BACKEND "MKL" CACHE STRING "BLAS implementation for NASOQ to use")
 set_property(CACHE NASOQ_BLAS_BACKEND PROPERTY STRINGS MKL OpenBLAS)
@@ -243,6 +248,11 @@ endif()
 
 if(NASOQ_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+# Add prototype if requested
+if(NASOQ_BUILD_PROTOTYPE)
+  add_subdirectory(prototype)
 endif()
 
 # =============================================================================
