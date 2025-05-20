@@ -17,18 +17,15 @@ void dscal(const int *n, const double *alpha, double *x, const int *incx) {
     std::cout << "*** [EMBEDDED] Using embedded dscal implementation (n=" << *n << ", alpha=" << *alpha << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Check for special cases
     if (*n <= 0 || *incx <= 0) {
         return;
     }
 
-    // Handle stride = 1 case efficiently
     if (*incx == 1) {
         for (int i = 0; i < *n; i++) {
             x[i] *= *alpha;
         }
     } else {
-        // Handle general stride case
         int ix = 0;
         for (int i = 0; i < *n; i++) {
             x[ix] *= *alpha;
@@ -43,32 +40,24 @@ void dsyr(const char *uplo, const int *n, const double *alpha,
     std::cout << "*** [EMBEDDED] Using embedded dsyr implementation (n=" << *n << ", alpha=" << *alpha << ", uplo=" << *uplo << ") ***" << std::endl; 
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Check for special cases
     if (*n <= 0 || *alpha == 0.0) {
         return;
     }
 
-    // Determine whether we're updating the lower ('L') or upper ('U') triangular part
     bool lower = (*uplo == 'L' || *uplo == 'l');
 
-    // Calculate the stride for x vector
     int ix = (*incx < 0) ? ((-(*n) + 1) * (*incx)) : 0;
 
-    // Perform the symmetric rank-1 update
     if (*incx == 1) {
-        // Efficient implementation for unit stride
         for (int j = 0; j < *n; j++) {
-            // Skip computation if x[j] is zero
             if (x[j] != 0.0) {
                 double temp = *alpha * x[j];
                 
                 if (lower) {
-                    // Update lower triangular part including diagonal
                     for (int i = j; i < *n; i++) {
                         a[i + j * (*lda)] += x[i] * temp;
                     }
                 } else {
-                    // Update upper triangular part including diagonal
                     for (int i = 0; i <= j; i++) {
                         a[i + j * (*lda)] += x[i] * temp;
                     }
@@ -76,21 +65,18 @@ void dsyr(const char *uplo, const int *n, const double *alpha,
             }
         }
     } else {
-        // Implementation for non-unit stride
         for (int j = 0; j < *n; j++) {
             int jx = ix + j * (*incx);
             if (x[jx / (*incx)] != 0.0) {
                 double temp = *alpha * x[jx / (*incx)];
                 
                 if (lower) {
-                    // Update lower triangular part including diagonal
                     int kx = jx;
                     for (int i = j; i < *n; i++) {
                         a[i + j * (*lda)] += x[kx / (*incx)] * temp;
                         kx += *incx;
                     }
                 } else {
-                    // Update upper triangular part including diagonal
                     int kx = ix;
                     for (int i = 0; i <= j; i++) {
                         a[i + j * (*lda)] += x[kx / (*incx)] * temp;
@@ -108,19 +94,15 @@ void dcopy(const int *n, const double *x, const int *incx,
     std::cout << "*** [EMBEDDED] Using embedded dcopy implementation (n=" << *n << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Check for special cases
     if (*n <= 0) {
         return;
     }
     
-    // Handle different stride cases
     if (*incx == 1 && *incy == 1) {
-        // Optimized case: unit stride for both vectors
         for (int i = 0; i < *n; i++) {
             y[i] = x[i];
         }
     } else {
-        // General case: non-unit stride
         int ix = (*incx > 0) ? 0 : ((-*n + 1) * (*incx));
         int iy = (*incy > 0) ? 0 : ((-*n + 1) * (*incy));
         
@@ -137,34 +119,27 @@ void blocked_2by2_solver(int n, double *D, double *rhs, int n_rhs, int lda, int 
     std::cout << "*** [EMBEDDED] Using embedded blocked_2by2_solver implementation (n=" << n << ", n_rhs=" << n_rhs << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Loop through the diagonal blocks
     for (int i = 0; i < n; ++i) {
-        if (D[i + lda_d] == 0) { 
-            // Simple 1x1 block - just scale by the inverse of the diagonal element
-            assert(D[i] != 0); // Ensure diagonal is non-zero
+        if (D[i + lda_d] == 0) {
+            assert(D[i] != 0);
             double tmp = 1.0 / D[i];
             
-            // Scale the corresponding row of the right-hand side
             for (int j = 0; j < n_rhs; ++j) {
                 rhs[i * lda + j] *= tmp;
             }
         } else {
-            // 2x2 block - solve using Cramer's rule
             double subdiag = D[i + lda_d];
             double determinant = D[i] * D[i + 1] - subdiag * subdiag;
             double one_over_det = 1.0 / determinant;
             
-            // Solve each right-hand side
             for (int j = 0; j < n_rhs; ++j) {
                 double x1 = rhs[i * lda + j];
                 double x2 = rhs[(i + 1) * lda + j];
                 
-                // Compute the solution
                 rhs[i * lda + j] = (x1 * D[i + 1] - x2 * subdiag) * one_over_det;
                 rhs[(i + 1) * lda + j] = (x2 * D[i] - x1 * subdiag) * one_over_det;
             }
             
-            // Skip the next row since it was part of the 2x2 block
             i++;
         }
     }
@@ -179,23 +154,19 @@ void dgemv(const char *trans, const int *m, const int *n,
               << ", trans='" << *trans << "', alpha=" << *alpha << ", beta=" << *beta << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Check for special cases where we can return early
     if (*m <= 0 || *n <= 0) {
         return;
     }
     
     if (*alpha == 0.0 && *beta == 1.0) {
-        return; // No operation needed: y = y
+        return;
     }
     
-    // Determine operation type (normal or transpose)
     bool do_trans = (*trans == 'T' || *trans == 't' || *trans == 'C' || *trans == 'c');
     
-    // If beta != 1.0, scale the output vector
     if (*beta != 1.0) {
         int len_y = do_trans ? *m : *n;
         if (*beta == 0.0) {
-            // Special case: beta = 0, just zero out y
             if (*incy == 1) {
                 for (int i = 0; i < len_y; i++) {
                     y[i] = 0.0;
@@ -208,7 +179,6 @@ void dgemv(const char *trans, const int *m, const int *n,
                 }
             }
         } else {
-            // General case: scale y by beta
             if (*incy == 1) {
                 for (int i = 0; i < len_y; i++) {
                     y[i] *= *beta;
@@ -223,16 +193,12 @@ void dgemv(const char *trans, const int *m, const int *n,
         }
     }
     
-    // If alpha == 0, we can return after scaling y
     if (*alpha == 0.0) {
         return;
     }
     
-    // Handle non-transposed operation
     if (!do_trans) {
-        // y = alpha*A*x + beta*y
         if (*incx == 1 && *incy == 1) {
-            // Optimized case for unit strides
             for (int j = 0; j < *n; j++) {
                 double x_val = *alpha * x[j];
                 for (int i = 0; i < *m; i++) {
@@ -240,7 +206,6 @@ void dgemv(const char *trans, const int *m, const int *n,
                 }
             }
         } else {
-            // General case for non-unit strides
             int ix = (*incx > 0) ? 0 : ((-*n + 1) * (*incx));
             
             for (int j = 0; j < *n; j++) {
@@ -256,11 +221,9 @@ void dgemv(const char *trans, const int *m, const int *n,
             }
         }
     } else {
-        // y = alpha*A'*x + beta*y
         int iy = (*incy > 0) ? 0 : ((-*n + 1) * (*incy));
         
         if (*incx == 1) {
-            // Optimized case when incx = 1
             for (int j = 0; j < *n; j++) {
                 double temp = 0.0;
                 for (int i = 0; i < *m; i++) {
@@ -270,7 +233,6 @@ void dgemv(const char *trans, const int *m, const int *n,
                 iy += *incy;
             }
         } else {
-            // General case for non-unit stride in x
             for (int j = 0; j < *n; j++) {
                 double temp = 0.0;
                 int ix = (*incx > 0) ? 0 : ((-*m + 1) * (*incx));
@@ -292,33 +254,26 @@ void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int ld
     std::cout << "*** [EMBEDDED] Using embedded blocked_2by2_mult implementation (n=" << n << ", m=" << m << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Loop through each block in the diagonal
     for (int i = 0; i < n;) {
-        if (D[i + lda_d] == 0) { 
-            // 1x1 block - simple scaling of the row
+        if (D[i + lda_d] == 0) {
             double d_val = D[i];
             
             for (int j = 0; j < m; ++j) {
                 dst[i * m + j] = d_val * src[i * lda + j];
             }
             
-            // Move to the next block
             i++;
         } else {
-            // 2x2 block - need to handle cross-terms
-            double d1 = D[i];         // D[i,i]
-            double d2 = D[i + 1];     // D[i+1,i+1]
-            double off_d = D[i + lda_d]; // D[i,i+1] = D[i+1,i]
+            double d1 = D[i];
+            double d2 = D[i + 1];
+            double off_d = D[i + lda_d];
             
             for (int j = 0; j < m; ++j) {
-                // Compute output for the first row
                 dst[i * m + j] = d1 * src[i * lda + j] + off_d * src[(i + 1) * lda + j];
                 
-                // Compute output for the second row
                 dst[(i + 1) * m + j] = off_d * src[i * lda + j] + d2 * src[(i + 1) * lda + j];
             }
             
-            // Skip the next row since it was part of the 2x2 block
             i += 2;
         }
     }
@@ -333,30 +288,25 @@ void dgemm(const char *transa, const char *transb, const int *m, const int *n, c
               << "', alpha=" << *alpha << ", beta=" << *beta << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Check for special cases where we can return early
     if (*m <= 0 || *n <= 0 || *k <= 0) {
         return;
     }
     
     if (*alpha == 0.0 && *beta == 1.0) {
-        return; // No operation needed: C = C
+        return;
     }
     
-    // Determine operation types based on transA and transB flags
     bool trans_a = (*transa == 'T' || *transa == 't' || *transa == 'C' || *transa == 'c');
     bool trans_b = (*transb == 'T' || *transb == 't' || *transb == 'C' || *transb == 'c');
     
-    // Scale C by beta
     if (*beta != 1.0) {
         if (*beta == 0.0) {
-            // Special case: beta = 0, just zero out C
             for (int j = 0; j < *n; j++) {
                 for (int i = 0; i < *m; i++) {
                     c[i + j * (*ldc)] = 0.0;
                 }
             }
         } else {
-            // General case: scale C by beta
             for (int j = 0; j < *n; j++) {
                 for (int i = 0; i < *m; i++) {
                     c[i + j * (*ldc)] *= *beta;
@@ -365,14 +315,11 @@ void dgemm(const char *transa, const char *transb, const int *m, const int *n, c
         }
     }
     
-    // If alpha == 0, we can return after scaling C by beta
     if (*alpha == 0.0) {
         return;
     }
     
-    // Handle all four cases based on transA and transB
     if (!trans_a && !trans_b) {
-        // C = alpha*A*B + beta*C
         for (int j = 0; j < *n; j++) {
             for (int l = 0; l < *k; l++) {
                 double temp = *alpha * b[l + j * (*ldb)];
@@ -382,7 +329,6 @@ void dgemm(const char *transa, const char *transb, const int *m, const int *n, c
             }
         }
     } else if (trans_a && !trans_b) {
-        // C = alpha*A'*B + beta*C
         for (int j = 0; j < *n; j++) {
             for (int i = 0; i < *m; i++) {
                 double temp = 0.0;
@@ -393,7 +339,6 @@ void dgemm(const char *transa, const char *transb, const int *m, const int *n, c
             }
         }
     } else if (!trans_a && trans_b) {
-        // C = alpha*A*B' + beta*C
         for (int j = 0; j < *n; j++) {
             for (int i = 0; i < *m; i++) {
                 double temp = 0.0;
@@ -403,8 +348,7 @@ void dgemm(const char *transa, const char *transb, const int *m, const int *n, c
                 c[i + j * (*ldc)] += *alpha * temp;
             }
         }
-    } else { // trans_a && trans_b
-        // C = alpha*A'*B' + beta*C
+    } else {
         for (int j = 0; j < *n; j++) {
             for (int i = 0; i < *m; i++) {
                 double temp = 0.0;
@@ -426,12 +370,10 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
               << "', transa='" << *transa << "', diag='" << *diag << "') ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Early return for empty matrices
     if (*m <= 0 || *n <= 0) {
         return;
     }
     
-    // If alpha is zero, just set B to zero
     if (*alpha == 0.0) {
         for (int j = 0; j < *n; j++) {
             for (int i = 0; i < *m; i++) {
@@ -441,25 +383,18 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
         return;
     }
     
-    // Determine if A is unit diagonal
     bool unit = (*diag == 'U' || *diag == 'u');
     
-    // Handle the case where A is on the left side of the equation
     if (*side == 'L' || *side == 'l') {
-        // Handle the case where A is not transposed
         if (*transa == 'N' || *transa == 'n') {
-            // Handle the case where A is lower triangular
             if (*uplo == 'L' || *uplo == 'l') {
-                // Loop through the columns of B
                 for (int j = 0; j < *n; j++) {
-                    // Scale the current column of B by alpha
                     if (*alpha != 1.0) {
                         for (int i = 0; i < *m; i++) {
                             b[i + j * (*ldb)] *= *alpha;
                         }
                     }
                     
-                    // Solve L*x = b for the current column
                     for (int k = 0; k < *m; k++) {
                         if (b[k + j * (*ldb)] != 0.0) {
                             if (!unit) {
@@ -473,18 +408,14 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
                     }
                 }
             }
-            // Handle the case where A is upper triangular
             else {
-                // Loop through the columns of B
                 for (int j = 0; j < *n; j++) {
-                    // Scale the current column of B by alpha
                     if (*alpha != 1.0) {
                         for (int i = 0; i < *m; i++) {
                             b[i + j * (*ldb)] *= *alpha;
                         }
                     }
                     
-                    // Solve U*x = b for the current column
                     for (int k = *m - 1; k >= 0; k--) {
                         if (b[k + j * (*ldb)] != 0.0) {
                             if (!unit) {
@@ -499,20 +430,15 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
                 }
             }
         }
-        // Handle the case where A is transposed
         else {
-            // Handle the case where A is lower triangular
             if (*uplo == 'L' || *uplo == 'l') {
-                // Loop through the columns of B
                 for (int j = 0; j < *n; j++) {
-                    // Scale the current column of B by alpha
                     if (*alpha != 1.0) {
                         for (int i = 0; i < *m; i++) {
                             b[i + j * (*ldb)] *= *alpha;
                         }
                     }
                     
-                    // Solve L'*x = b for the current column
                     for (int i = *m - 1; i >= 0; i--) {
                         double temp = b[i + j * (*ldb)];
                         if (!unit) {
@@ -526,18 +452,14 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
                     }
                 }
             }
-            // Handle the case where A is upper triangular
             else {
-                // Loop through the columns of B
                 for (int j = 0; j < *n; j++) {
-                    // Scale the current column of B by alpha
                     if (*alpha != 1.0) {
                         for (int i = 0; i < *m; i++) {
                             b[i + j * (*ldb)] *= *alpha;
                         }
                     }
                     
-                    // Solve U'*x = b for the current column
                     for (int i = 0; i < *m; i++) {
                         double temp = b[i + j * (*ldb)];
                         if (!unit) {
@@ -553,10 +475,8 @@ void dtrsm(const char *side, const char *uplo, const char *transa, const char *d
             }
         }
     }
-    // Handle the case where A is on the right side of the equation
     else {
-        // Implementation of right-side triangular solve omitted for brevity
-        // This would follow a similar pattern to the left-side case
+        // TODO: Implementation of right-side triangular solve
         std::cout << "[EMBEDDED] Warning: Right-side triangular solve not fully implemented yet." << std::endl;
     }
 }
@@ -590,14 +510,12 @@ void swap_vector(int n, double *a, double *b, int lda) {
     
     double tmp = 0;
     if (lda == 1) {
-        // Optimize for unit stride
         for (int i = 0; i < n; ++i) {
             tmp = *(a + i);
             *(a + i) = *(b + i);
             *(b + i) = tmp;
         }
     } else {
-        // General case for non-unit stride
         for (int i = 0; i < n; ++i) {
             tmp = *(a + i * lda);
             *(a + i * lda) = *(b + i * lda);
@@ -618,7 +536,7 @@ void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere)
     for (int k = 0; k < n; k++) {
         tmp = A + k * (stride + 1);
         
-        #if 0 // Small pivot detection (disabled by default, same as in original implementation)
+        #if 0
         if (std::abs(*tmp) <= critere) {
             (*tmp) = critere;
             (*nbpivot)++;
@@ -629,10 +547,9 @@ void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere)
         int tmp_dim = n - k - 1;
         double sca_tmp = one / (*tmp);
         
-        // Scale column k below the diagonal by 1/A[k,k]
         dscal(&tmp_dim, &sca_tmp, tmp1, &iun);
         
-        // Perform symmetric rank-1 update of the trailing submatrix
+        // symmetric rank-1 update of the trailing submatrix
         int dimx = n - k - 1;
         double diag = -(*tmp);
         double *tmp1_stride = tmp1 + stride;
@@ -642,7 +559,6 @@ void sym_sytrf(double *A, int n, const int stride, int *nbpivot, double critere)
     }
 }
 
-// Helper functions for dlapmt
 template<typename T>
 inline const T& embedded_minimum(const T& a, const T& b) {
     return a <= b ? a : b;
@@ -666,11 +582,9 @@ int dlapmt(int matrix_layout, int forwrd, int m, int n,
               << ", n=" << n << ", forwrd=" << (forwrd ? "true" : "false") << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Constants for matrix layout
     const int LAPACK_ROW_MAJOR = 101;
     const int LAPACK_COL_MAJOR = 102;
     
-    // Function to transpose matrix blocks
     auto transpose_into = [](double* out_x_t, int ldx_t, const double* x, int ldx, 
                              int m, int n, int matrix_layout) {
         int i_max, j_max;
@@ -691,118 +605,94 @@ int dlapmt(int matrix_layout, int forwrd, int m, int n,
         }
     };
     
-    // Handle row major layout by transposing to column major, permuting, then transposing back
     if (LAPACK_ROW_MAJOR == matrix_layout) {
         int ldx_t = embedded_maximum(1, m);
-        if (ldx < n) return -6;  // Invalid ldx parameter
+        if (ldx < n) return -6;
         
-        // Create temporary buffer for transposed matrix
         std::vector<double> x_t(ldx_t * embedded_maximum(1, n));
         
-        // Transpose input matrix to column major format
         transpose_into(x_t.data(), ldx_t, x, ldx, m, n, matrix_layout);
         
-        // Apply column permutation on transposed matrix in column major format
         int info = dlapmt(LAPACK_COL_MAJOR, forwrd, m, n, x_t.data(), ldx_t, k);
         if (info < 0) return info;
         
-        // Transpose result back to row major format
         transpose_into(x, ldx, x_t.data(), ldx_t, m, n, LAPACK_COL_MAJOR);
         
         return 0;
     } 
-    // For column major layout, apply permutation directly
     else if (LAPACK_COL_MAJOR == matrix_layout) {
-        if (ldx < m) return -6;  // Invalid ldx parameter
+        if (ldx < m) return -6;
         
-        // Create temporary space for column swap operations
         std::vector<double> temp_col(m);
         std::vector<int> perm(n);
         
-        // Initialize permutation tracking array
         for (int i = 0; i < n; i++) {
             perm[i] = i;
         }
         
         if (forwrd) {
-            // Forward permutation: X(*,K(J)) is moved to X(*,J)
+            // Forward permutation
             for (int j = 0; j < n; j++) {
-                // Skip if column is already in correct position
                 if (perm[j] == j) continue;
                 
                 int curr_col = j;
-                int dest_col = k[j] - 1;  // Convert from 1-indexed to 0-indexed
+                int dest_col = k[j] - 1;
                 
-                // Save the current column
                 for (int i = 0; i < m; i++) {
                     temp_col[i] = x[i + curr_col * ldx];
                 }
                 
-                // Move columns in a cyclic fashion until we return to start
                 while (dest_col != j) {
-                    // Move destination column to current position
                     for (int i = 0; i < m; i++) {
                         x[i + curr_col * ldx] = x[i + dest_col * ldx];
                     }
                     
-                    // Mark this permutation as done
                     perm[curr_col] = perm[dest_col];
                     
-                    // Move to next column in cycle
                     curr_col = dest_col;
-                    dest_col = k[curr_col] - 1;  // Convert from 1-indexed to 0-indexed
+                    dest_col = k[curr_col] - 1;
                 }
                 
-                // Place saved column in final position
                 for (int i = 0; i < m; i++) {
                     x[i + curr_col * ldx] = temp_col[i];
                 }
                 
-                // Mark final permutation as done
                 perm[curr_col] = j;
             }
         } else {
-            // Backward permutation: X(*,J) is moved to X(*,K(J))
+            // Backward permutation
             for (int j = 0; j < n; j++) {
-                // Skip if column is already in correct position
                 if (perm[j] == j) continue;
                 
                 int curr_col = j;
-                int dest_col = k[j] - 1;  // Convert from 1-indexed to 0-indexed
+                int dest_col = k[j] - 1;
                 
-                // Save the current column
                 for (int i = 0; i < m; i++) {
                     temp_col[i] = x[i + curr_col * ldx];
                 }
                 
-                // Move columns in a cyclic fashion until we return to start
                 while (dest_col != j) {
-                    // Move destination column to current position
                     for (int i = 0; i < m; i++) {
                         x[i + curr_col * ldx] = x[i + dest_col * ldx];
                     }
                     
-                    // Mark this permutation as done
                     perm[curr_col] = perm[dest_col];
                     
-                    // Move to next column in cycle
                     curr_col = dest_col;
-                    dest_col = k[curr_col] - 1;  // Convert from 1-indexed to 0-indexed
+                    dest_col = k[curr_col] - 1;
                 }
                 
-                // Place saved column in final position
                 for (int i = 0; i < m; i++) {
                     x[i + curr_col * ldx] = temp_col[i];
                 }
                 
-                // Mark final permutation as done
                 perm[curr_col] = j;
             }
         }
         
         return 0;
     } else {
-        return -1;  // Invalid matrix_layout parameter
+        return -1;
     }
 }
 
@@ -811,11 +701,9 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
     std::cout << "*** [EMBEDDED] Using embedded dgetrf implementation (m=" << m << ", n=" << n << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Constants for matrix layout
     const int LAPACK_ROW_MAJOR = 101;
     const int LAPACK_COL_MAJOR = 102;
     
-    // Check for invalid parameters
     if (matrix_layout != LAPACK_ROW_MAJOR && matrix_layout != LAPACK_COL_MAJOR) {
         return -1;
     }
@@ -836,7 +724,6 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
         return -5;
     }
     
-    // Early return for empty matrices
     if (m == 0 || n == 0) {
         return 0;
     }
@@ -844,7 +731,6 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
     int min_mn = std::min(m, n);
     int info = 0;
     
-    // Main implementation for column-major format
     if (matrix_layout == LAPACK_COL_MAJOR) {
         // LU factorization for column-major format
         for (int k = 0; k < min_mn; k++) {
@@ -860,28 +746,24 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
                 }
             }
             
-            // Record pivot index (1-based as per LAPACK standard)
+            // Record pivot index of 1-based
             ipiv[k] = p + 1;
             
-            // Check for singularity
             if (a[p + k*lda] == 0.0) {
                 if (info == 0) info = k + 1;
                 continue;
             }
             
-            // Swap rows if necessary
             if (p != k) {
                 for (int j = 0; j < n; j++) {
                     std::swap(a[k + j*lda], a[p + j*lda]);
                 }
             }
             
-            // Compute elements of L (multipliers)
             for (int i = k+1; i < m; i++) {
                 a[i + k*lda] /= a[k + k*lda];
             }
             
-            // Update trailing submatrix
             for (int j = k+1; j < n; j++) {
                 for (int i = k+1; i < m; i++) {
                     a[i + j*lda] -= a[i + k*lda] * a[k + j*lda];
@@ -892,7 +774,6 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
     else { // Row-major format
         // LU factorization for row-major format
         for (int k = 0; k < min_mn; k++) {
-            // Find pivot - the row with largest absolute value in column k
             int p = k;
             double max_val = std::abs(a[k*lda + k]);
             
@@ -904,28 +785,23 @@ int dgetrf(int matrix_layout, int m, int n, double *a, int lda, int *ipiv) {
                 }
             }
             
-            // Record pivot index (1-based as per LAPACK standard)
             ipiv[k] = p + 1;
             
-            // Check for singularity
             if (a[p*lda + k] == 0.0) {
                 if (info == 0) info = k + 1;
                 continue;
             }
             
-            // Swap rows if necessary
             if (p != k) {
                 for (int j = 0; j < n; j++) {
                     std::swap(a[k*lda + j], a[p*lda + j]);
                 }
             }
             
-            // Compute elements of L (multipliers)
             for (int i = k+1; i < m; i++) {
                 a[i*lda + k] /= a[k*lda + k];
             }
             
-            // Update trailing submatrix
             for (int i = k+1; i < m; i++) {
                 for (int j = k+1; j < n; j++) {
                     a[i*lda + j] -= a[i*lda + k] * a[k*lda + j];
@@ -942,11 +818,9 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
     std::cout << "*** [EMBEDDED] Using embedded dsytrf implementation (n=" << n << ", uplo=" << uplo << ") ***" << std::endl;
     std::cout << "**************************************************************\n\n" << std::flush;
     
-    // Constants for matrix layout
     const int LAPACK_ROW_MAJOR = 101;
     const int LAPACK_COL_MAJOR = 102;
     
-    // Check for invalid parameters
     if (matrix_layout != LAPACK_ROW_MAJOR && matrix_layout != LAPACK_COL_MAJOR) {
         return -1;
     }
@@ -963,22 +837,18 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
         return -5;
     }
     
-    // Quick return if possible
     if (n == 0) {
         return 0;
     }
     
-    // Initialize ipiv to default values (1-indexed, following LAPACK)
     for (int i = 0; i < n; i++) {
         ipiv[i] = i + 1;
     }
     
-    // Handle row-major format by transposing to column-major
     std::vector<double> a_copy;
     double *a_ptr = a;
     
     if (matrix_layout == LAPACK_ROW_MAJOR) {
-        // Create a copy in column-major format
         a_copy.resize(n * lda);
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -988,24 +858,17 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
         a_ptr = a_copy.data();
     }
     
-    // Determine if we're working with upper or lower triangular part
     bool lower = (uplo == 'L' || uplo == 'l');
     
     int info = 0;
     int nbpivot = 0;
-    double critere = 1e-10; // Small pivot threshold
+    double critere = 1e-10;
     
-    // Alpha parameter for the Bunch-Kaufman algorithm
-    // (1 + sqrt(17))/8 ≈ 0.6404... is proven to minimize element growth
     const double alpha = (1.0 + std::sqrt(17.0)) / 8.0;
     
-    // Main loop for the Bunch-Kaufman algorithm
     int k = 0;
     while (k < n) {
         if (lower) {
-            // Lower triangular case
-            
-            // Find the largest off-diagonal element in column k (below diagonal)
             double colmax = 0.0;
             int r = -1;
             for (int i = k + 1; i < n; i++) {
@@ -1016,21 +879,16 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                 }
             }
             
-            // Diagonal element
             double akk = a_ptr[k + k * lda];
             
             if (colmax == 0.0 || std::abs(akk) >= alpha * colmax) {
-                // 1×1 pivot
-                
-                // Check for small diagonal element
                 if (std::abs(akk) <= critere) {
-                    if (info == 0) info = k + 1; // Record first zero pivot
+                    if (info == 0) info = k + 1;
                     akk = (akk > 0) ? critere : -critere;
                     a_ptr[k + k * lda] = akk;
                     nbpivot++;
                 }
                 
-                // Compute multipliers
                 if (colmax > 0.0) {
                     double d = 1.0 / akk;
                     for (int i = k + 1; i < n; i++) {
@@ -1038,7 +896,6 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     }
                 }
                 
-                // Update trailing submatrix
                 for (int j = k + 1; j < n; j++) {
                     double temp = a_ptr[j + k * lda];
                     for (int i = j; i < n; i++) {
@@ -1046,16 +903,11 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     }
                 }
                 
-                // Record 1×1 pivot
-                ipiv[k] = k + 1;  // 1-indexed
+                ipiv[k] = k + 1;
                 k++;
             } else {
-                // Off-diagonal element is relatively large
-                // Check if 2×2 pivot is needed
+                if (r == -1) r = k + 1;
                 
-                if (r == -1) r = k + 1; // Ensure r is valid
-                
-                // Find the largest off-diagonal element in column r
                 double rowmax = 0.0;
                 for (int i = k; i < r; i++) {
                     double abs_val = std::abs(a_ptr[r + i * lda]);
@@ -1070,41 +922,29 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     }
                 }
                 
-                // Diagonal element at position r
                 double arr = a_ptr[r + r * lda];
                 
                 if (rowmax == 0.0 || std::abs(arr) >= alpha * rowmax) {
-                    // Use a 1×1 pivot from position r
+                    ipiv[k] = r + 1;
                     
-                    // Interchange rows and columns k and r
-                    // Update the pivot index
-                    ipiv[k] = r + 1;  // 1-indexed
-                    
-                    // Swap elements
                     if (r != k) {
-                        // Swap diagonal elements
                         std::swap(a_ptr[k + k * lda], a_ptr[r + r * lda]);
                         
-                        // Swap column segments above k
                         for (int i = 0; i < k; i++) {
                             std::swap(a_ptr[i + k * lda], a_ptr[i + r * lda]);
                         }
                         
-                        // Swap row segments right of k and left of r
                         for (int j = k + 1; j < r; j++) {
                             std::swap(a_ptr[k + j * lda], a_ptr[j + r * lda]);
                         }
                         
-                        // Swap column segments below r
                         for (int i = r + 1; i < n; i++) {
                             std::swap(a_ptr[i + k * lda], a_ptr[i + r * lda]);
                         }
                     }
                     
-                    // Now proceed with 1×1 pivot at position k
                     double akk = a_ptr[k + k * lda];
                     
-                    // Check for small diagonal element
                     if (std::abs(akk) <= critere) {
                         if (info == 0) info = k + 1;
                         akk = (akk > 0) ? critere : -critere;
@@ -1112,7 +952,6 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                         nbpivot++;
                     }
                     
-                    // Compute multipliers
                     if (colmax > 0.0) {
                         double d = 1.0 / akk;
                         for (int i = k + 1; i < n; i++) {
@@ -1120,7 +959,6 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                         }
                     }
                     
-                    // Update trailing submatrix
                     for (int j = k + 1; j < n; j++) {
                         double temp = a_ptr[j + k * lda];
                         for (int i = j; i < n; i++) {
@@ -1130,24 +968,11 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     
                     k++;
                 } else {
-                    // Use a 2×2 pivot
-                    
-                    // Interchange rows and columns k and k+1 with r-1 and r
-                    // This is a simplified version - full implementation would handle
-                    // all the permutation cases carefully
-                    
-                    // Just using 1×1 pivot here for simplicity
-                    // A complete implementation would handle 2×2 pivots properly
-                    
-                    // Record 1×1 pivot (simplified)
-                    ipiv[k] = k + 1;  // 1-indexed
+                    ipiv[k] = k + 1;
                     k++;
                 }
             }
         } else {
-            // Upper triangular case - similar to lower case but with different indexing
-            
-            // Find the largest off-diagonal element in row k (right of diagonal)
             double rowmax = 0.0;
             int r = -1;
             for (int j = k + 1; j < n; j++) {
@@ -1158,13 +983,9 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                 }
             }
             
-            // Diagonal element
             double akk = a_ptr[k + k * lda];
             
             if (rowmax == 0.0 || std::abs(akk) >= alpha * rowmax) {
-                // 1×1 pivot
-                
-                // Check for small diagonal element
                 if (std::abs(akk) <= critere) {
                     if (info == 0) info = k + 1;
                     akk = (akk > 0) ? critere : -critere;
@@ -1172,7 +993,6 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     nbpivot++;
                 }
                 
-                // Compute multipliers
                 if (rowmax > 0.0) {
                     double d = 1.0 / akk;
                     for (int j = k + 1; j < n; j++) {
@@ -1180,7 +1000,6 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     }
                 }
                 
-                // Update trailing submatrix
                 for (int i = k + 1; i < n; i++) {
                     double temp = a_ptr[k + i * lda];
                     for (int j = i; j < n; j++) {
@@ -1188,20 +1007,15 @@ int dsytrf(int matrix_layout, char uplo, int n, double *a, int lda, int *ipiv) {
                     }
                 }
                 
-                // Record 1×1 pivot
-                ipiv[k] = k + 1;  // 1-indexed
+                ipiv[k] = k + 1;
                 k++;
             } else {
-                // Similar 2×2 pivot logic as in lower case, but adapted for upper triangular
-                // Simplified to use 1×1 pivot here
-                
-                ipiv[k] = k + 1;  // 1-indexed
+                ipiv[k] = k + 1;
                 k++;
             }
         }
     }
     
-    // If we used a temporary copy for row-major format, copy the results back
     if (matrix_layout == LAPACK_ROW_MAJOR) {
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {

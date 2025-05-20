@@ -67,7 +67,7 @@ namespace nasoq {
 #define SET_BLAS_THREAD(t) (MKL_Domain_Set_Num_Threads(t, MKL_DOMAIN_BLAS))
 #endif
 
-// Override specific functions with embedded versions if EMBEDDED is defined
+// Override specific functions with embedded versions if EMBEDDED
 #ifdef EMBEDDED
 #undef SYM_DSCAL
 #define SYM_DSCAL nasoq::embedded::dscal
@@ -81,29 +81,20 @@ namespace nasoq {
 #define SYM_DGEMM nasoq::embedded::dgemm
 #undef SYM_DTRSM
 #define SYM_DTRSM nasoq::embedded::dtrsm
-// Add embedded versions of dot and swap_vector
 #define NASOQ_DOT nasoq::embedded::dot
 #define NASOQ_SWAP_VECTOR nasoq::embedded::swap_vector
-// Add embedded version of sym_sytrf
 #define SYM_SYTRF nasoq::embedded::sym_sytrf
-// Add embedded version of dlapmt
 #define NASOQ_DLAPMT nasoq::embedded::dlapmt
-// Add embedded version of dgetrf
 #define NASOQ_DGETRF nasoq::embedded::dgetrf
-// Add embedded version of dsytrf
 #define NASOQ_DSYTRF nasoq::embedded::dsytrf
 #else
-// Use non-embedded versions (default implementations)
 #define NASOQ_DOT nasoq::dot
 #define NASOQ_SWAP_VECTOR nasoq::swap_vector
 #define SYM_SYTRF nasoq::sym_sytrf
-// Use clapacke version for dlapmt when not using embedded
 #define NASOQ_DLAPMT nasoq::clapacke::LAPACKE_dlapmt
-// Use clapacke version for dgetrf when not using embedded
 #define NASOQ_DGETRF nasoq::clapacke::LAPACKE_dgetrf
 #endif
 
-// Define SYM_DSCAL if not already defined by the EMBEDDED section
 #ifndef SYM_DSCAL
 #ifdef OPENBLAS
 #define SYM_DSCAL dscal_
