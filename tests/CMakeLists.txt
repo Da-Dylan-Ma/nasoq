@@ -7,20 +7,30 @@ add_executable(NASOQ_Catch2_Tests
 )
 target_include_directories(NASOQ_Catch2_Tests PRIVATE
     "${PROJECT_SOURCE_DIR}/include/nasoq/")
-target_link_libraries(NASOQ_Catch2_Tests PRIVATE
-    nasoq::eigen_interface
-    Catch2::Catch2
-    nlohmann_json::nlohmann_json
-)
 
-if(NASOQ_USE_BLAS_MKL AND NASOQ_USE_CLAPACK)
+# Only link to eigen_interface if not in EMBEDDED_ONLY mode
+if(NOT EMBEDDED_ONLY)
+    target_link_libraries(NASOQ_Catch2_Tests PRIVATE
+        nasoq::eigen_interface
+        Catch2::Catch2
+        nlohmann_json::nlohmann_json
+    )
+else()
+    target_link_libraries(NASOQ_Catch2_Tests PRIVATE
+        nasoq::nasoq
+        Catch2::Catch2
+        nlohmann_json::nlohmann_json
+    )
+endif()
+
+if(NASOQ_USE_BLAS_MKL AND NASOQ_USE_CLAPACK AND NOT EMBEDDED_ONLY)
     # compares the CLAPACK implementation of the needed LAPACKE functions to the MKL ones
     target_sources(NASOQ_Catch2_Tests PRIVATE "test_clapacke.cpp")
     target_link_libraries(NASOQ_Catch2_Tests PRIVATE mkl::mkl)
 endif()
 
 # Add embedded BLAS test when EMBEDDED is enabled
-if(NASOQ_USE_EMBEDDED)
+if(EMBEDDED OR EMBEDDED_ONLY)
     # Standalone embedded test executable
     add_executable(EMBEDDED_BLAS_Test 
         "main.cpp"

@@ -130,7 +130,7 @@ void dgemv(const char *trans, const int *m, const int *n,
  * @param lda   Leading dimension of src
  * @param lda_d Stride for subdiagonal elements in D
  */
-void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst, int lda, int lda_d);
+void blocked_2by2_mult(int n, int m, const double *D, const double *src, double *dst, int lda, int lda_d);
 
 /**
  * @brief Matrix-matrix multiplication (DGEMM)

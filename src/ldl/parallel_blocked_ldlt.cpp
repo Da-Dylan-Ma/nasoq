@@ -205,6 +205,8 @@ namespace nasoq {
   //LAst iteration
 #ifdef OPENBLAS
   openblas_set_num_threads(threads);
+#elif defined(EMBEDDED)
+  // No thread setting needed for embedded mode
 #else
   MKL_Domain_Set_Num_Threads(threads, MKL_DOMAIN_BLAS);
 #endif

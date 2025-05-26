@@ -20,27 +20,33 @@
 // Include embedded implementation headers if we're using them
 #ifdef EMBEDDED
 #include "nasoq/embedded/embedded_blas.h"
+
+// Define LAPACK constants for embedded mode
+#define LAPACK_ROW_MAJOR 101
+#define LAPACK_COL_MAJOR 102
 #endif
 
 // Include BLAS headers based on the selected backend
-#ifdef OPENBLAS
-/*    #ifdef OB_INTERNAL
-    #include "lapacke.h"
-    #include "cblas.h"
-    //#include "common_interface.h"
-    #else*/
-    //#include "openblas/f77blas.h"
-  #ifdef NASOQ_USE_CLAPACK
-    #include "nasoq/clapacke/clapacke.h"
+#if !defined(EMBEDDED) || defined(EMBEDDED_WITH_BLAS)
+  #ifdef OPENBLAS
+    /*    #ifdef OB_INTERNAL
+      #include "lapacke.h"
+      #include "cblas.h"
+      //#include "common_interface.h"
+      #else*/
+      //#include "openblas/f77blas.h"
+    #ifdef NASOQ_USE_CLAPACK
+      #include "nasoq/clapacke/clapacke.h"
+    #else
+      #include "openblas/lapacke.h"
+    #endif
+      #include "openblas/cblas.h"
+    // #endif
   #else
-    #include "openblas/lapacke.h"
-  #endif
-    #include "openblas/cblas.h"
-   // #endif
-#else
     #include "mkl.h"
     #include <mkl_blas.h>
     #include <mkl_lapacke.h>
+  #endif
 #endif
 
 namespace nasoq {
@@ -51,56 +57,53 @@ namespace nasoq {
   }
 
 // Define the BLAS function macros
-#ifdef OPENBLAS
-#define SYM_DGEMM dgemm_
-#define SYM_DTRSM dtrsm_
-#define SYM_DGEMV dgemv_
-#define SYM_DSYR dsyr_
-#define SYM_DCOPY dcopy_
-#define SET_BLAS_THREAD(t) (openblas_set_num_threads(t))
-#else
-#define SYM_DGEMM dgemm
-#define SYM_DTRSM dtrsm
-#define SYM_DGEMV dgemv
-#define SYM_DSYR dsyr
-#define SYM_DCOPY dcopy
-#define SET_BLAS_THREAD(t) (MKL_Domain_Set_Num_Threads(t, MKL_DOMAIN_BLAS))
-#endif
-
-// Override specific functions with embedded versions if EMBEDDED
 #ifdef EMBEDDED
-#undef SYM_DSCAL
-#define SYM_DSCAL nasoq::embedded::dscal
-#undef SYM_DSYR
-#define SYM_DSYR nasoq::embedded::dsyr
-#undef SYM_DCOPY
-#define SYM_DCOPY nasoq::embedded::dcopy
-#undef SYM_DGEMV
-#define SYM_DGEMV nasoq::embedded::dgemv
-#undef SYM_DGEMM
-#define SYM_DGEMM nasoq::embedded::dgemm
-#undef SYM_DTRSM
-#define SYM_DTRSM nasoq::embedded::dtrsm
-#define NASOQ_DOT nasoq::embedded::dot
-#define NASOQ_SWAP_VECTOR nasoq::embedded::swap_vector
-#define SYM_SYTRF nasoq::embedded::sym_sytrf
-#define NASOQ_DLAPMT nasoq::embedded::dlapmt
-#define NASOQ_DGETRF nasoq::embedded::dgetrf
-#define NASOQ_DSYTRF nasoq::embedded::dsytrf
+  // Use embedded implementations
+  #define SYM_DSCAL nasoq::embedded::dscal
+  #define SYM_DSYR nasoq::embedded::dsyr
+  #define SYM_DCOPY nasoq::embedded::dcopy
+  #define SYM_DGEMV nasoq::embedded::dgemv
+  #define SYM_DGEMM nasoq::embedded::dgemm
+  #define SYM_DTRSM nasoq::embedded::dtrsm
+  #define NASOQ_DOT nasoq::embedded::dot
+  #define NASOQ_SWAP_VECTOR nasoq::embedded::swap_vector
+  #define SYM_SYTRF nasoq::embedded::sym_sytrf
+  #define NASOQ_DLAPMT nasoq::embedded::dlapmt
+  #define NASOQ_DGETRF nasoq::embedded::dgetrf
+  #define NASOQ_DSYTRF nasoq::embedded::dsytrf
+  #define SET_BLAS_THREAD(t) ((void)0) // No-op for embedded
+  
+  // Alias LAPACKE functions to our embedded implementations
+  #define LAPACKE_dsytrf nasoq::embedded::dsytrf
+  #define LAPACKE_dlapmt nasoq::embedded::dlapmt
+  #define LAPACKE_dgetrf nasoq::embedded::dgetrf
 #else
-#define NASOQ_DOT nasoq::dot
-#define NASOQ_SWAP_VECTOR nasoq::swap_vector
-#define SYM_SYTRF nasoq::sym_sytrf
-#define NASOQ_DLAPMT nasoq::clapacke::LAPACKE_dlapmt
-#define NASOQ_DGETRF nasoq::clapacke::LAPACKE_dgetrf
-#endif
-
-#ifndef SYM_DSCAL
-#ifdef OPENBLAS
-#define SYM_DSCAL dscal_
-#else
-#define SYM_DSCAL dscal
-#endif
+  // Use external BLAS
+  #ifdef OPENBLAS
+    #define SYM_DGEMM dgemm_
+    #define SYM_DTRSM dtrsm_
+    #define SYM_DGEMV dgemv_
+    #define SYM_DSYR dsyr_
+    #define SYM_DCOPY dcopy_
+    #define SYM_DSCAL dscal_
+    #define SET_BLAS_THREAD(t) (openblas_set_num_threads(t))
+  #else
+    #define SYM_DGEMM dgemm
+    #define SYM_DTRSM dtrsm
+    #define SYM_DGEMV dgemv
+    #define SYM_DSYR dsyr
+    #define SYM_DCOPY dcopy
+    #define SYM_DSCAL dscal
+    #define SET_BLAS_THREAD(t) (MKL_Domain_Set_Num_Threads(t, MKL_DOMAIN_BLAS))
+  #endif
+  
+  // External implementation definitions
+  #define NASOQ_DOT nasoq::dot
+  #define NASOQ_SWAP_VECTOR nasoq::swap_vector
+  #define SYM_SYTRF nasoq::sym_sytrf
+  #define NASOQ_DLAPMT nasoq::clapacke::LAPACKE_dlapmt
+  #define NASOQ_DGETRF nasoq::clapacke::LAPACKE_dgetrf
+  #define NASOQ_DSYTRF LAPACKE_dsytrf
 #endif
 
  void
@@ -172,12 +175,7 @@ namespace nasoq {
  * diagonal matrix is symmetric
  */
 
-#ifdef EMBEDDED
-void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst,
-                        int lda, int lda_d);
-#else
  void blocked_2by2_mult(int n, int m, double *D, double *src, double *dst,
                         int lda, int lda_d);
-#endif
 }
 #endif //PROJECT_BLASKERNELS_H
