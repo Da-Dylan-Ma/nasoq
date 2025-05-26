@@ -1,0 +1,16 @@
+May 26, 2025
+
+Done Items:
+- Cleared unit test errors (93/133 -> 133/133). Ensured that each single routine is free of serious logical flaws.
+  - Some of the errors are due to I set up some unit test incorrectly 
+    (e.g. reconstruction loop mixing up row/column indexing which produces wrong results; pulling the L entries from the wrong offsets etc..)
+  - Other errors are from my implementation of the replacement routines 
+    (e.g. the element in row r, column c is src[r + c*lda], but I wrote src[r*lda + c], which is not aligned with BLAS-style and leads to some misagreement of other parts of code.)
+- Refined the PlatformIO code used to upload the code, while correctly setting the QP problem data well with the new codegen approach of data handling, to the Teensy 4.1 board.
+- Tried the code on Teensy 4.1 board:
+  - Code can be uploaded OK.
+  - Further errors are found, blocking running it.
+
+Current Tasks:
+- dlapmt (column permutation) needs changes. The logic is correct, but I need to turn it into an in-place cycle leader style permutation, to avoid touching heap.
+- Repeat the upload/build/run routine again and again to eliminate further errors. I am not able to list them here but I will always show them 
